@@ -6,7 +6,7 @@ env.reset()
 
 for _ in range(1000):
     env.render()
-    env.step(1)
+    env.step([0, 1])
         
 env.close() # 销毁游戏环境
 
