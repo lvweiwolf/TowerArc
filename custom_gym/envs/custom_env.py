@@ -17,16 +17,17 @@ from gym.utils import seeding, EzPickle
 
 
 FPS = 50
-SCALE = 30.0   # affects how fast-paced the game is, forces should be adjusted as well
+SCALE = 3.0   # affects how fast-paced the game is, forces should be adjusted as well
 
 VIEWPORT_W = 600     # 窗口宽度
 VIEWPORT_H = 400     # 窗口高度
 NUM_ARCS = 30
 
 BODY_W = 0.1
-BODY_H = 5.0
+BODY_H = 15.0
 AUTO_POINT_NUM = 20
 
+                
 class TowerArcEnv(gym.Env):
     """
     说明:
@@ -61,22 +62,28 @@ class TowerArcEnv(gym.Env):
     
     def __init__(self):
         super(TowerArcEnv, self).__init__()
-        self.seed()
         self.viewer = None
-      
         self.world = Box2D.b2World()
         self.terrain = None
         self.tower1 = None
         self.tower2 = None
-        self.arcline = None
-        self.max_speed = 0.5
-        self.min_x = 0.0
-        self.max_x = VIEWPORT_W / SCALE
+        # self.arclineInSpan = None
+        # self.arclineOutSpan = None
+        self.lowestPnt = None
+        
+        self.K = 7e-4
+        self.max_speed = 5.0
+        
+        self.min_x1 = 0.0
+        self.max_x1 = (VIEWPORT_W / SCALE) * 0.5
+        self.min_x2 = self.max_x1
+        self.max_x2 = (VIEWPORT_W / SCALE)
         
         self.pre_reward = None
         self.observation_space = spaces.Box(-np.inf, np.inf, shape=(8,), dtype=np.float32)
         self.action_space = spaces.Box(0, 3, (2,), dtype=np.int32)
-          
+
+        self.seed()
         self.reset()
         
     def _destroy(self):
@@ -94,9 +101,6 @@ class TowerArcEnv(gym.Env):
             self.world.DestroyBody(self.tower2)
             self.tower2 = None
             
-        if self.arcline:
-            self.world.DestroyBody(self.arcline)
-            self.arcline = None
             
     def _calc_heights(self, heights, chunk_x, x):
         assert len(heights) == len(chunk_x), "heights's length must equal to chunk_x's length" 
@@ -113,7 +117,7 @@ class TowerArcEnv(gym.Env):
                     pi = i
                     ni = i + 1
     
-        if pi and ni:
+        if pi is not None and ni is not None:
             h = ((x - chunk_x[pi]) / (chunk_x[ni] - chunk_x[pi])
                  ) * (heights[ni] - heights[pi]) + heights[pi]
 
@@ -129,11 +133,17 @@ class TowerArcEnv(gym.Env):
         
         p1x, p1y, p1z = p1
         p2x, p2y, p2z = p2
+        pntsInSpan = []
+        pntsOutSpan = []
         
         # 计算档距
         span = math.sqrt((p2x - p1x)*(p2x - p1x) +
                          (p2y - p1y)*(p2y - p1y) +
                          (p2z - p1z)*(p2z - p1z))
+        
+        if span == 0.0:
+            return pntsInSpan, pntsOutSpan, (0, 0, 0)
+        
         # 计算高差
         dh = p2z - p1z
         # 计算高角差
@@ -148,9 +158,6 @@ class TowerArcEnv(gym.Env):
         
         # 弧垂点数
         num = math.floor(span / step)
-        pntsInSpan = []
-        pntsOutSpan = []
-        
         for i in range(num):
             px, py, pz = (0.0, 0.0, 0.0)  # x, y, z
             xrec = i * step  # 与起点的距离
@@ -160,7 +167,9 @@ class TowerArcEnv(gym.Env):
             # 斜抛公式
             z = p1z + yrec
             pntsInSpan.append((x, y, z))
-            
+        
+        pntsInSpan.append(p2)
+        
         # 弧垂最低点在起始点左侧
         if lv1 < 0:
             # 计算档距外弧垂最低点坐标
@@ -176,7 +185,7 @@ class TowerArcEnv(gym.Env):
                 xrec = 0.0 - i*step
                 x = p1x + (p1x - p2x) * math.fabs(xrec) / span
                 y = p1y + (p1y - p2y) * math.fabs(xrec) / span
-                yrec = xrec * math.tan(angle) - 4*k*xrec(span - xrec) / math.cos(angle)
+                yrec = xrec * math.tan(angle) - 4*k*xrec*(span - xrec) / math.cos(angle)
                 z = p1z + yrec
                 pntsOutSpan.append((x, y, z))
             
@@ -197,7 +206,7 @@ class TowerArcEnv(gym.Env):
                 xrec = span + i*step
                 x = p2x + (p2x - p1x) * i * step / span
                 y = p2y + (p2y - p1y) * i * step / span
-                yrec = xrec * math.tan(angle) - 4*k*xrec(span - xrec) / math.cos(angle)
+                yrec = xrec * math.tan(angle) - 4*k*xrec*(span - xrec) / math.cos(angle)
                 z = p1z + yrec
                 pntsOutSpan.append((x, y, z))
             
@@ -209,10 +218,17 @@ class TowerArcEnv(gym.Env):
             lowesty = p1y + (p2y - p1y)* lv1 / span
             lowrec = lv1 * math.tan(angle) - 4*k*lv1*(span-lv1) / math.cos(angle)
             lowestz = p1z + lowrec
+        else:
+            minz = math.inf
+            lowestx, lowesty, lowestz = 0.0, 0.0, 0.0
+            
+            for x, y, z in pntsInSpan:
+                if z < minz:
+                    minz = z
+                    lowestx, lowesty, lowestz = x, y, z
             
         return pntsInSpan, pntsOutSpan, (lowestx, lowesty, lowestz)
                 
-    
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
@@ -258,7 +274,7 @@ class TowerArcEnv(gym.Env):
                           maskBits = 0x001,
                           restitution = 0.0)
         
-        pos1x = W * 3 / 10
+        pos1x = self.np_random.uniform(self.min_x1, self.max_x1)
         pos1y = self._calc_heights(self.smooth_y, self.chunk_x, pos1x)
         self.tower1 = self.world.CreateStaticBody(
             position=(pos1x, pos1y + BODY_H / 2),
@@ -267,7 +283,7 @@ class TowerArcEnv(gym.Env):
         self.tower1.color1 = (0.5, 0.4, 0.9)
         self.tower1.color2 = (0.3, 0.3, 0.5)
         
-        pos2x = W * 7 / 10
+        pos2x = self.np_random.uniform(self.min_x2, self.max_x2)
         pos2y = self._calc_heights(self.smooth_y, self.chunk_x, pos2x)
         self.tower2 = self.world.CreateStaticBody(
             position=(pos2x, pos2y + BODY_H / 2),
@@ -275,68 +291,90 @@ class TowerArcEnv(gym.Env):
         
         self.tower2.color1 = (0.5, 0.4, 0.9)
         self.tower2.color2 = (0.3, 0.3, 0.5)
-
         
         # 弧垂导线
-        WIRE_LENGTH = 10
-        pellet_w = 0.05
-        pellet_h = 0.05
-        num_pellets = int(WIRE_LENGTH / pellet_w )
-        pr_w = (pos2x - pos1x) / num_pellets
-        pr_h = (pos2y - pos1y) / num_pellets
+        p1 = (pos1x, 0.0, pos1y + BODY_H)
+        p2 = (pos2x, 0.0, pos2y + BODY_H)
         
+        pntsInSpan, pntsOutSpan, lowestPt = self._calc_arcpnts(p1, p2, self.K, 2.0)
+        self.lowestPnt = (lowestPt[0], lowestPt[2])
+        self.arclinePnts1 = []
+        self.arclinePnts2 = []
         
-        pellet = b2FixtureDef(shape=b2PolygonShape(box=(pellet_w, pellet_h)),
-                          friction=0.2,
-                          density=5.0,
-                          categoryBits=0x0001,
-                          maskBits = 0x001)
-        
-        
-        pellets = []
-        prevBody = self.tower1
-        
-        for i in range(num_pellets):
-            body = self.world.CreateDynamicBody(
-                position=(pos1x + pr_w * i, pos1y + BODY_H + pr_h * i),
-                fixtures=pellet
-            ) 
-            body.color1 = (0.0, 1.0, 0.0)
-            body.color2 = (0.0, 1.0, 0.0)     
+        if len(pntsInSpan) > 0:
+            for x, y, z in pntsInSpan:
+                self.arclinePnts1.append((x, z))
                 
-            self.world.CreateRevoluteJoint(
-                bodyA=prevBody,
-                bodyB=body,
-                anchor=(pos1x + pr_w * i, pos1y + BODY_H + pr_h * i)
-            )
-            
-            pellets.append(body)            
-            prevBody = body
-            
-            if(i == num_pellets - 1):
-                #   追加一个ground用于绑定最后一块动态块
-                self.world.CreateRevoluteJoint(
-                    bodyA=body,
-                    bodyB=self.tower2,
-                    anchor=(pos1x + pr_w * i, pos1y + BODY_H + pr_h * i)
-                )
-                
-        self.drawlist = [self.tower1, self.tower2] + pellets
-        self.state = np.array([])
+        if len(pntsOutSpan) > 0:
+            for x, y, z in pntsOutSpan:
+                self.arclinePnts2.append((x, z))
+        
+        self.drawlist = [self.tower1, self.tower2]
+        self.state = np.array([self.tower1.position.x, 
+                               self.tower2.position.x,
+                               0.0,
+                               0.0])
         
         return self.step(np.array([0, 0]))[0]
 
     def step(self, action):
-        
         self.world.Step(1.0/FPS, 6*30, 2*30)
         
-        # 横向偏移
-        pos = self.tower1.position
-        posx = pos.x + 0.1
-        posy = self._calc_heights(self.smooth_y, self.chunk_x, posx)
-        self.tower1.position = b2Vec2(posx, posy + BODY_H / 2)
+        pos1x = self.state[0]
+        pos2x = self.state[1]
+        v1 = self.state[2]
+        v2 = self.state[3]
         
-        state = [
+        action1 = action[0] # 杆1的动作
+        action2 = action[1] # 杆2的动作
+        
+        # v1 += get_action_force(aciton1)
+        # v2 += get_action_force(action2)
+        v1 = 0.2
+        v2 = -0.2
+        
+        if v1 > self.max_speed: v1 = self.max_speed
+        if v1 < -self.max_speed: v1 = -self.max_speed
+        if v2 > self.max_speed: v2 = self.max_speed
+        if v2 < -self.max_speed: v2 = -self.max_speed
+        
+        pos1x += v1
+        pos2x += v2
+        
+        if pos1x > self.max_x1: pos1x = self.max_x1
+        if pos1x < self.min_x1: pos1x = self.min_x1
+        if pos2x > self.max_x2: pos2x = self.max_x2
+        if pos2x < self.min_x2: pos2x = self.min_x2
+                
+        # 更新杆塔位置和弧垂
+        pos1y = self._calc_heights(self.smooth_y, self.chunk_x, pos1x)
+        self.tower1.position = b2Vec2(pos1x, pos1y + BODY_H / 2)
+        pos2y = self._calc_heights(self.smooth_y, self.chunk_x, pos2x)
+        self.tower2.position = b2Vec2(pos2x, pos2y + BODY_H / 2)
+        
+        p1 = (self.tower1.position.x, 0.0, self.tower1.position.y + BODY_H / 2)
+        p2 = (self.tower2.position.x, 0.0, self.tower2.position.y + BODY_H / 2)
+        
+        # 计算新位置的弧垂
+        pntsInSpan, pntsOutSpan, lowestPt = self._calc_arcpnts(p1, p2, self.K, 2.0)
+        self.lowestPnt = (lowestPt[0], lowestPt[2])
+        arclinePnts1 = []
+        arclinePnts2 = []
+        
+        if len(pntsInSpan) > 0:
+            for x, y, z in pntsInSpan:
+               arclinePnts1.append((x, z))
+                
+        if len(pntsOutSpan) > 0:
+            for x, y, z in pntsOutSpan:
+                arclinePnts2.append((x, z))
+                
+        self.arclinePnts1 = arclinePnts1
+        self.arclinePnts2 = arclinePnts2
+        
+        # 判断是否结束，并计算响应的回报
+        
+        self.state = [
             self.tower1.position.x,
             self.tower2.position.x,
             0.0,
@@ -345,7 +383,7 @@ class TowerArcEnv(gym.Env):
         reward = 0
         done = False
         
-        return np.array(state, dtype=np.float32), reward, done, {}
+        return np.array(self.state, dtype=np.float32), reward, done, {}
         
     def render(self):
         from gym.envs.classic_control import rendering
@@ -356,6 +394,12 @@ class TowerArcEnv(gym.Env):
         
         for p in self.terrain_polys:
             self.viewer.draw_polygon(p, color=(0, 0, 0))
+            
+        if len(self.arclinePnts1) > 0:
+            self.viewer.draw_polyline(self.arclinePnts1, color=(0.0, 1.0, 0.0), linewidth=2)
+            
+        if len(self.arclinePnts2) > 0:
+            self.viewer.draw_polyline(self.arclinePnts2, color=(0.0, 0.0, 1.0), linewidth=2)  
             
         for obj in self.drawlist:
             for f in obj.fixtures:
