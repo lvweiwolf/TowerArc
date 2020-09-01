@@ -1,13 +1,25 @@
 import gym # 导入 gym 游戏平台
 import custom_gym
+import numpy as np
 
 env = gym.make("TowerArc-v0") # 创建平衡杆游戏环境
 env.reset()
+total_reward = 0
 
-for _ in range(1000):
+for i in range(1000):
     env.render()
-    env.step([0, 1])
-        
+    a1 = np.random.choice(range(3), p=[0.2, 0.4, 0.4])
+    a2 = np.random.choice(range(3), p=[0.2, 0.4, 0.4])
+    s, r, done, info = env.step([a1, a2])
+    total_reward += r
+    
+    if i % 20 == 0 or done:
+        print("observations:", " ".join(["{:+0.2f}".format(x) for x in s]))
+        print("step {} total_reward {:+0.2f}".format(i, total_reward))
+    
+    if done:
+        break    
+
 env.close() # 销毁游戏环境
 
 

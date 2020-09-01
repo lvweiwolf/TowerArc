@@ -1,5 +1,6 @@
 from math import tan
 import os, math
+import re
 from gym.envs.classic_control.rendering import LineWidth
 import numpy as np
 import Box2D
@@ -100,6 +101,37 @@ class TowerArcEnv(gym.Env):
         if self.tower2:
             self.world.DestroyBody(self.tower2)
             self.tower2 = None
+
+    def _get_action_force(self, action):
+        if action == 1:
+            return -0.2
+        elif action == 2:
+            return 0.2
+        else:
+            return 0.0
+        
+    def _get_distance_to_terrain(self, pntsInSpan):
+        minimum = math.inf
+        
+        for x, y in pntsInSpan:
+            terrain_y = self._calc_heights(self.smooth_y, self.chunk_x, x)
+            delta = y - terrain_y
+            if delta < minimum:
+                minimum = delta
+        
+        # for x, y in pntsOutSpan:
+        #     terrain_y = self._calc_heights(self.smooth_y, self.chunk_x, x)
+        #     delta = y - terrain_y
+        #     if delta < minimum:
+        #         minimum = delta
+                
+        # x, y = lowestPnt
+        # terrain_y = self._calc_heights(self.smooth_y, self.chunk_x, x)
+        # delta = y - terrain_y
+        # if delta < minimum:
+        #     minimum = delta
+        
+        return minimum
             
             
     def _calc_heights(self, heights, chunk_x, x):
@@ -228,7 +260,7 @@ class TowerArcEnv(gym.Env):
                     lowestx, lowesty, lowestz = x, y, z
             
         return pntsInSpan, pntsOutSpan, (lowestx, lowesty, lowestz)
-                
+    
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
@@ -325,13 +357,8 @@ class TowerArcEnv(gym.Env):
         v1 = self.state[2]
         v2 = self.state[3]
         
-        action1 = action[0] # 杆1的动作
-        action2 = action[1] # 杆2的动作
-        
-        # v1 += get_action_force(aciton1)
-        # v2 += get_action_force(action2)
-        v1 = 0.2
-        v2 = -0.2
+        v1 += self._get_action_force(action[0]) # 杆1的动作
+        v2 += self._get_action_force(action[1]) # 杆2的动作
         
         if v1 > self.max_speed: v1 = self.max_speed
         if v1 < -self.max_speed: v1 = -self.max_speed
@@ -373,15 +400,22 @@ class TowerArcEnv(gym.Env):
         self.arclinePnts2 = arclinePnts2
         
         # 判断是否结束，并计算响应的回报
-        
         self.state = [
             self.tower1.position.x,
             self.tower2.position.x,
-            0.0,
-            0.0
+            v1,
+            v2
         ]
+        
         reward = 0
         done = False
+        distance_to_terrain = self._get_distance_to_terrain(arclinePnts1)
+        
+        if distance_to_terrain < 0.0:
+            done = True
+            reward = -10.0
+        else:
+            reward = distance_to_terrain
         
         return np.array(self.state, dtype=np.float32), reward, done, {}
         
