@@ -13,6 +13,14 @@
             "justMyCode": false
         },
         {
+            "name": "TowerArc-v0.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/TowerArc-v0.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "Python: 当前文件",
             "type": "python",
             "request": "launch",

@@ -73,7 +73,7 @@ class TowerArcEnv(gym.Env):
         self.lowestPnt = None
         
         self.K = 7e-4
-        self.max_speed = 5.0
+        self.max_speed = 2.0
         
         self.min_x1 = 0.0
         self.max_x1 = (VIEWPORT_W / SCALE) * 0.5
@@ -103,12 +103,17 @@ class TowerArcEnv(gym.Env):
             self.tower2 = None
 
     def _get_action_force(self, action):
-        if action == 1:
-            return -0.2
+        v = 0.05
+        if action == 0:
+            return -v, -v
+        elif action == 1:
+            return -v, v
         elif action == 2:
-            return 0.2
+            return v, -v
+        elif action == 3:
+            return v, v
         else:
-            return 0.0
+            return 0.0, 0.0
         
     def _get_distance_to_terrain(self, pntsInSpan):
         minimum = math.inf
@@ -278,7 +283,7 @@ class TowerArcEnv(gym.Env):
         # 地形
         self.chunks = 31
         # 生成随机高度值
-        self.heights = self.np_random.uniform(0, H/2., size=(self.chunks+1, ))
+        self.heights = self.np_random.uniform(H/4, H/2., size=(self.chunks+1, ))
         self.chunk_x = [W / (self.chunks - 1) * i for i in range(self.chunks)]
         self.smooth_y = [0.33*(self.heights[i-1] + self.heights[i+0] + self.heights[i+1]) 
                          for i in range(self.chunks)]
@@ -342,23 +347,25 @@ class TowerArcEnv(gym.Env):
                 self.arclinePnts2.append((x, z))
         
         self.drawlist = [self.tower1, self.tower2]
-        self.state = np.array([self.tower1.position.x, 
-                               self.tower2.position.x,
-                               0.0,
-                               0.0])
+        self.state = np.array([self.tower1.position.x / W, 
+                               self.tower2.position.x / W,
+                               self.np_random.uniform(-self.max_speed, self.max_speed),
+                               self.np_random.uniform(-self.max_speed, self.max_speed)])
         
-        return self.step(np.array([0, 0]))[0]
+        return np.array(self.state)
 
     def step(self, action):
         self.world.Step(1.0/FPS, 6*30, 2*30)
         
-        pos1x = self.state[0]
-        pos2x = self.state[1]
+        pos1x = self.state[0] * (VIEWPORT_W / SCALE)
+        pos2x = self.state[1] * (VIEWPORT_W / SCALE)
         v1 = self.state[2]
         v2 = self.state[3]
         
-        v1 += self._get_action_force(action[0]) # 杆1的动作
-        v2 += self._get_action_force(action[1]) # 杆2的动作
+        v1_offset, v2_offset = self._get_action_force(action)
+        
+        v1 += v1_offset # 杆1的动作
+        v2 += v2_offset # 杆2的动作
         
         if v1 > self.max_speed: v1 = self.max_speed
         if v1 < -self.max_speed: v1 = -self.max_speed
@@ -401,21 +408,20 @@ class TowerArcEnv(gym.Env):
         
         # 判断是否结束，并计算响应的回报
         self.state = [
-            self.tower1.position.x,
-            self.tower2.position.x,
+            self.tower1.position.x / (VIEWPORT_W / SCALE),
+            self.tower2.position.x / (VIEWPORT_W / SCALE),
             v1,
             v2
         ]
         
         reward = 0
-        done = False
         distance_to_terrain = self._get_distance_to_terrain(arclinePnts1)
-        
-        if distance_to_terrain < 0.0:
-            done = True
-            reward = -10.0
+        done = bool(distance_to_terrain < 0.0 or distance_to_terrain == math.inf)
+       
+        if not done:
+            reward = distance_to_terrain / (VIEWPORT_H / SCALE)
         else:
-            reward = distance_to_terrain
+            reward = 0.0
         
         return np.array(self.state, dtype=np.float32), reward, done, {}
         
