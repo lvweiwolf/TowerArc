@@ -26,6 +26,7 @@ TRAIN_EVERY_NUM_EPISODES = 1
 PRINT_INTERVAL = 20
 EPOCH_SIZE = 1
 
+
 def train(agent, env, sess, num_episode = NUM_EPISODES):
     score = 0.0 # 计分
     returns = []
@@ -60,7 +61,7 @@ if __name__ == "__main__":
     agent = ReinforceAgent(lr = LEARNING_RATE,
                            gamma = DISCOUNT_FACTOR,
                            state_size = 4,
-                           action_size = 4)
+                           action_size = 9)
     
     
     

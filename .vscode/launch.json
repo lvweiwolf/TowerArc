@@ -13,10 +13,10 @@
             "justMyCode": false
         },
         {
-            "name": "TowerArc-v0.py",
+            "name": "ppo.py",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/TowerArc-v0.py",
+            "program": "${workspaceFolder}/ppo.py",
             "console": "integratedTerminal",
             "justMyCode": false
         },

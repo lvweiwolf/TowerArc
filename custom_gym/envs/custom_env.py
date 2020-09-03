@@ -71,9 +71,12 @@ class TowerArcEnv(gym.Env):
         # self.arclineInSpan = None
         # self.arclineOutSpan = None
         self.lowestPnt = None
+        self.distancePolyline = None
         
         self.K = 7e-4
-        self.max_speed = 2.0
+        self.tau = 0.02 # seconds between state updates
+        self.max_speed = 5.0
+        
         
         self.min_x1 = 0.0
         self.max_x1 = (VIEWPORT_W / SCALE) * 0.5
@@ -85,6 +88,31 @@ class TowerArcEnv(gym.Env):
         self.action_space = spaces.Box(0, 3, (2,), dtype=np.int32)
 
         self.seed()
+        
+        W = VIEWPORT_W / SCALE
+        H = VIEWPORT_H / SCALE        
+         # 地形
+        self.chunks = 31
+        # 生成随机高度值
+        self.heights = self.np_random.uniform(H/4, H/2., size=(self.chunks+1, ))
+        self.chunk_x = [W / (self.chunks - 1) * i for i in range(self.chunks)]
+        self.smooth_y = [0.33*(self.heights[i-1] + self.heights[i+0] + self.heights[i+1]) 
+                         for i in range(self.chunks)]
+        
+        self.terrain = self.world.CreateStaticBody(shapes=b2EdgeShape(vertices=[(0,0), (W, 0)]))
+        self.terrain_polys = []
+        
+        for i in range(self.chunks - 1):
+            p1 = (self.chunk_x[i], self.smooth_y[i])
+            p2 = (self.chunk_x[i+1], self.smooth_y[i+1])
+            # 为地形刚体填充边缘顶点
+            self.terrain.CreateEdgeFixture(vertices=[p1,p2],  density=0, friction=0.1)
+            # 为地形绘制顶点数据填充顶点
+            self.terrain_polys.append([p1, p2, (p2[0], H), (p1[0], H)])
+        
+        self.terrain.color1 = (0.0, 0.0, 0.0)
+        self.terrain.color2 = (0.0, 0.0, 0.0)
+        
         self.reset()
         
     def _destroy(self):
@@ -102,8 +130,8 @@ class TowerArcEnv(gym.Env):
             self.world.DestroyBody(self.tower2)
             self.tower2 = None
 
-    def _get_action_force(self, action):
-        v = 0.05
+    def _get_acceleration(self, action):
+        v = 10.0
         if action == 0:
             return -v, -v
         elif action == 1:
@@ -112,6 +140,16 @@ class TowerArcEnv(gym.Env):
             return v, -v
         elif action == 3:
             return v, v
+        # elif action == 4:
+        #     return 0, 0
+        # elif action == 5:
+        #     return 0, v
+        # elif action == 6:
+        #     return v, -v
+        # elif action == 7:
+        #     return v, 0
+        # elif action == 8:
+        #     return v, v
         else:
             return 0.0, 0.0
         
@@ -123,6 +161,7 @@ class TowerArcEnv(gym.Env):
             delta = y - terrain_y
             if delta < minimum:
                 minimum = delta
+                self.distancePolyline = [(x, y), (x, terrain_y)]
         
         # for x, y in pntsOutSpan:
         #     terrain_y = self._calc_heights(self.smooth_y, self.chunk_x, x)
@@ -137,8 +176,7 @@ class TowerArcEnv(gym.Env):
         #     minimum = delta
         
         return minimum
-            
-            
+             
     def _calc_heights(self, heights, chunk_x, x):
         assert len(heights) == len(chunk_x), "heights's length must equal to chunk_x's length" 
         
@@ -280,28 +318,6 @@ class TowerArcEnv(gym.Env):
         W = VIEWPORT_W / SCALE
         H = VIEWPORT_H / SCALE
         
-        # 地形
-        self.chunks = 31
-        # 生成随机高度值
-        self.heights = self.np_random.uniform(H/4, H/2., size=(self.chunks+1, ))
-        self.chunk_x = [W / (self.chunks - 1) * i for i in range(self.chunks)]
-        self.smooth_y = [0.33*(self.heights[i-1] + self.heights[i+0] + self.heights[i+1]) 
-                         for i in range(self.chunks)]
-        
-        self.terrain = self.world.CreateStaticBody(shapes=b2EdgeShape(vertices=[(0,0), (W, 0)]))
-        self.terrain_polys = []
-        
-        for i in range(self.chunks - 1):
-            p1 = (self.chunk_x[i], self.smooth_y[i])
-            p2 = (self.chunk_x[i+1], self.smooth_y[i+1])
-            # 为地形刚体填充边缘顶点
-            self.terrain.CreateEdgeFixture(vertices=[p1,p2],  density=0, friction=0.1)
-            # 为地形绘制顶点数据填充顶点
-            self.terrain_polys.append([p1, p2, (p2[0], H), (p1[0], H)])
-        
-        self.terrain.color1 = (0.0, 0.0, 0.0)
-        self.terrain.color2 = (0.0, 0.0, 0.0)
-        
         # 创建杆塔
         body_shape = b2PolygonShape(box = (BODY_W / 2, BODY_H / 2))
         fd = b2FixtureDef(shape = body_shape,
@@ -362,24 +378,21 @@ class TowerArcEnv(gym.Env):
         v1 = self.state[2]
         v2 = self.state[3]
         
-        v1_offset, v2_offset = self._get_action_force(action)
+        # 先更新位移，再更新速度
+        pos1x += self.tau * v1 # 位移=速度x时间
+        pos2x += self.tau * v2
         
-        v1 += v1_offset # 杆1的动作
-        v2 += v2_offset # 杆2的动作
+        # 根据动作确定加速度方向
+        v1_acc, v2_acc = self._get_acceleration(action)
         
-        if v1 > self.max_speed: v1 = self.max_speed
-        if v1 < -self.max_speed: v1 = -self.max_speed
-        if v2 > self.max_speed: v2 = self.max_speed
-        if v2 < -self.max_speed: v2 = -self.max_speed
+        v1 += self.tau * v1_acc # 速度增量=时间x加速度
+        v2 += self.tau * v2_acc
         
-        pos1x += v1
-        pos2x += v2
-        
-        if pos1x > self.max_x1: pos1x = self.max_x1
-        if pos1x < self.min_x1: pos1x = self.min_x1
-        if pos2x > self.max_x2: pos2x = self.max_x2
-        if pos2x < self.min_x2: pos2x = self.min_x2
-                
+        # if v1 > self.max_speed: v1 = self.max_speed
+        # if v1 < -self.max_speed: v1 = -self.max_speed
+        # if v2 > self.max_speed: v2 = self.max_speed
+        # if v2 < -self.max_speed: v2 = -self.max_speed
+   
         # 更新杆塔位置和弧垂
         pos1y = self._calc_heights(self.smooth_y, self.chunk_x, pos1x)
         self.tower1.position = b2Vec2(pos1x, pos1y + BODY_H / 2)
@@ -416,10 +429,18 @@ class TowerArcEnv(gym.Env):
         
         reward = 0
         distance_to_terrain = self._get_distance_to_terrain(arclinePnts1)
-        done = bool(distance_to_terrain < 0.0 or distance_to_terrain == math.inf)
+        
+        done = bool(pos1x < - VIEWPORT_W / SCALE 
+                    or pos1x > VIEWPORT_W / SCALE
+                    or pos2x < - VIEWPORT_W / SCALE
+                    or pos2x > VIEWPORT_W / SCALE
+                    or distance_to_terrain < 0.0 
+                    or distance_to_terrain == math.inf)
        
         if not done:
             reward = distance_to_terrain / (VIEWPORT_H / SCALE)
+            if math.fabs(self.tower2.position.x - self.tower1.position.x) < 50.0:
+                reward = 0.0
         else:
             reward = 0.0
         
@@ -439,7 +460,10 @@ class TowerArcEnv(gym.Env):
             self.viewer.draw_polyline(self.arclinePnts1, color=(0.0, 1.0, 0.0), linewidth=2)
             
         if len(self.arclinePnts2) > 0:
-            self.viewer.draw_polyline(self.arclinePnts2, color=(0.0, 0.0, 1.0), linewidth=2)  
+            self.viewer.draw_polyline(self.arclinePnts2, color=(0.0, 0.0, 1.0), linewidth=2)
+            
+        if self.distancePolyline and len(self.distancePolyline) > 0:
+            self.viewer.draw_polyline(self.distancePolyline, color=(1.0, 0.0, 0.0), linewidth=2)
             
         for obj in self.drawlist:
             for f in obj.fixtures:
