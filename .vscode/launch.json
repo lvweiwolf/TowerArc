@@ -16,7 +16,7 @@
             "name": "ppo.py",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/ppo.py",
+            "program": "${workspaceFolder}/towerarc_ppo.py",
             "console": "integratedTerminal",
             "justMyCode": false
         },

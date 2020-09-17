@@ -169,7 +169,7 @@ def tensorflow_init():
 
 
 def main():
-    ENV = gym.make('TowerArc-v0') # 创建交互环境
+    ENV = gym.make('OSG_TowerArc-v0') # 创建交互环境
     ENV.seed(2222)
     tf.random.set_random_seed(2222)
     np.random.seed(2222)
@@ -182,7 +182,7 @@ def main():
                                            'next_state'])
     
     # 定义智能体
-    agent = PPO(action_size=4)
+    agent = PPO(action_size=16)
     returns = []    # 统计总回报
     total = 0       # 一段时间内的平均回报
     

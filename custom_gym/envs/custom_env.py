@@ -1,16 +1,11 @@
-from math import tan
-import os, math
-import re
+import math
 from gym.envs.classic_control.rendering import LineWidth
 import numpy as np
 import Box2D
 from Box2D.Box2D import (b2CircleShape, b2EdgeShape, 
                          b2PolygonShape, 
                          b2FixtureDef,
-                         b2Vec2, 
-                         b2ContactListener, 
-                         b2RopeJointDef, b2Vec3)
-
+                         b2Vec2)
 
 import gym
 from gym import spaces
@@ -75,7 +70,7 @@ class TowerArcEnv(gym.Env):
         
         self.K = 7e-4
         self.tau = 0.02 # seconds between state updates
-        self.max_speed = 5.0
+        self.max_speed = 20.0
         
         
         self.min_x1 = 0.0
