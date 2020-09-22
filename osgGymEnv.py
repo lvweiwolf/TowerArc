@@ -343,6 +343,7 @@ class TowerBody(Body):
     x = property(_osgGymEnv.TowerBody_x_get, _osgGymEnv.TowerBody_x_set)
     y = property(_osgGymEnv.TowerBody_y_get, _osgGymEnv.TowerBody_y_set)
     height = property(_osgGymEnv.TowerBody_height_get, _osgGymEnv.TowerBody_height_set)
+    actualHeight = property(_osgGymEnv.TowerBody_actualHeight_get, _osgGymEnv.TowerBody_actualHeight_set)
     name = property(_osgGymEnv.TowerBody_name_get, _osgGymEnv.TowerBody_name_set)
     model_path = property(_osgGymEnv.TowerBody_model_path_get, _osgGymEnv.TowerBody_model_path_set)
     __swig_destroy__ = _osgGymEnv.delete_TowerBody
@@ -396,8 +397,8 @@ class World(object):
     def DeleteTerrainBody(self, terrain):
         return _osgGymEnv.World_DeleteTerrainBody(self, terrain)
 
-    def CreateTowerBody(self, x, y, model_path):
-        return _osgGymEnv.World_CreateTowerBody(self, x, y, model_path)
+    def CreateTowerBody(self, x, y, height, model_path):
+        return _osgGymEnv.World_CreateTowerBody(self, x, y, height, model_path)
 
     def DeleteTowerBody(self, tower):
         return _osgGymEnv.World_DeleteTowerBody(self, tower)

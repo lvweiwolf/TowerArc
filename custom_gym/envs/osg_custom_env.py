@@ -1,6 +1,8 @@
 import math
+from math import fabs
 import re
 import numpy as np
+from tensorflow.python.framework.tensor_shape import vector
 import osgGymEnv as env
 
 import gym
@@ -22,35 +24,26 @@ class OSG_TowerArcEnv(gym.Env):
     状态 (State):
         Type: ndarray[4]
         序号      状态          最小值          最大值
-        1         杆1 x位置     extents.min_x   extents.max_x
-        2         杆1 y位置     extents.min_y   extents.max_y
-        3         杆2 x位置     extents.min_x   extents.max_x
-        4         杆2 y位置     extents.min_y   extents.max_y
-        5         杆1 x速度     -0.5            0.5
-        6         杆1 y速度     -0.5            0.5
-        7         杆2 x速度     -0.5            0.5
-        7         杆2 y速度     -0.5            0.5
+        1         杆1 高度      5               30
+        2         杆2 高度      5               30
+        ...
+        ...         杆1与杆2间K值 0               7e-4
+       
+        
         
     动作 (Action):
         Type: ndarray[16]
         序号       动作
         
-        0          杆1 +x, +y  杆2 +x, +y
-        1          杆1 +x, +y  杆2 +x, -y
-        2          杆1 +x, +y  杆2 -x, +y
-        3          杆1 +x, +y  杆2 -x, -y
-        4          杆1 +x, -y  杆2 +x, +y
-        5          杆1 +x, -y  杆2 +x, -y
-        6          杆1 +x, -y  杆2 -x, +y
-        7          杆1 +x, -y  杆2 -x, -y
-        8          杆1 -x, +y  杆2 +x, +y
-        9          杆1 -x, +y  杆2 +x, -y
-        10         杆1 -x, +y  杆2 -x, +y
-        11         杆1 -x, +y  杆2 -x, -y
-        12         杆1 -x, -y  杆2 +x, +y
-        13         杆1 -x, -y  杆2 +x, -y
-        14         杆1 -x, -y  杆2 -x, +y
-        15         杆1 -x, -y  杆2 -x, -y
+        1          杆1 +h      杆2 +h       +k
+        2          杆1 +h      杆2 +h       -k
+        3          杆1 +h      杆2 -h       +k
+        4          杆1 +h      杆2 -h       -k
+        5          杆1 -h      杆2 +h       +k
+        6          杆1 -h      杆2 +h       -k
+        7          杆1 -h      杆2 -h       +k
+        8          杆1 -h      杆2 -h       -k
+        ...
         
     奖励 (Reward):
         假设有杆1挂点与杆2挂点按照悬链线方程计算的弧垂挂点，最低弧垂点
@@ -68,21 +61,51 @@ class OSG_TowerArcEnv(gym.Env):
     
         self.K = 7e-5
         self.tau = 1.0
-        self.max_speed = 20
-            
+        self.max_speed = 10
+        self.min_height = 20
+        self.max_height = 80
+        
+        self.towers = []
+        self.tower_velocity = []
+        self.arclines = []
+        
+        # towerPositions = [(-239.130, -1078.551), 
+        #                   (-466.500, -647.039),
+        #                   (-629.240, -116.453),
+        #                   (-1017.519, 229.423),
+        #                   (-753.508, 772.095)]
+        towerPositions = [(-239.130, -1078.551), 
+                          (-466.500, -647.039),
+                          (-629.240, -116.453)]
+        
+        self.seed()
         self.world = env.World()
         self.viewer = self.world.GetViewer()
         
+        # 创建地形
         self.terrain = self.world.CreateTerrainBody(DEM_TIFF, DOM_TIFF)
-        # 创建杆塔 1
-        self.tower1 = self.world.CreateTowerBody(0, 0, TOWER_MODEL_OBJ)
-        # 创建杆塔2
-        self.tower2 = self.world.CreateTowerBody(0, 0, TOWER_MODEL_OBJ)
+        extents = self.terrain.extent
+
+        # 创建杆塔
+        for x, y in towerPositions:
+            tower = self.world.CreateTowerBody(x, y, self.max_height, TOWER_MODEL_OBJ)
+            self.towers.append(tower)
+            self.tower_velocity.append(0.0)
+        
         # 创建弧垂
-        self.arcline = self.world.CreateArclineBody(self.tower1, self.tower2, self.K, 5)
+        for i in range(len(self.towers) - 1):
+            curTower = self.towers[i]
+            nextTower = self.towers[i + 1]
+            arcline = self.world.CreateArclineBody(curTower, nextTower, self.K, 5)
+            self.arclines.append(arcline)
+    
+        low = np.array([0.0 for _ in self.towers] + [-1.0 for _ in self.tower_velocity])
+        high = np.array([1.0 for _ in self.towers] + [1.0 for _ in self.tower_velocity])
         
-        
-        self.seed()
+        # 暂时固定K值，只考虑杆塔高度
+        self.action_space = spaces.Discrete(int(math.pow(2, len(self.towers))))
+        self.observation_space = spaces.Box(low, high, dtype=np.float32)
+
         self.reset()
         
     def _destroy(self):
@@ -90,24 +113,22 @@ class OSG_TowerArcEnv(gym.Env):
             self.world.DeleteTerrainBody(self.terrain)
             self.terrain = None
         
-        if self.tower1:
-            self.world.DeleteTowerBody(self.tower1)
-            self.tower1 = None
+        for tower in self.towers:
+            self.world.DeleteTowerBody(tower)
+        
+        self.towers = None
+
+        for arcline in self.arclines:
+            self.world.DeleteArclineBody(arcline)
             
-        if self.tower2:
-            self.world.DeleteTowerBody(self.tower2)
-            self.tower2 = None
-            
-        if self.arcline:
-            self.world.DeleteArclineBody(self.arcline)
-            self.arcline = None
-    
+        self.arclines = None
+
     def _get_accelerate(self, action):
-        v = 10.0
-        acc = [v, v, v, v]        
+        acc = [0.5 for _ in self.towers]
         
         # 将action转化为二进制
-        bitstr = '{:04b}'.format(action)
+        format_str = '{' + f':0{len(acc)}b' + '}'
+        bitstr = format_str.format(action)
         
         for i in range(len(acc)):
             if bitstr[i] == '0':
@@ -120,40 +141,23 @@ class OSG_TowerArcEnv(gym.Env):
         return [seed]          
     
     def reset(self):
-        # if self.tower1:
-        #     self.world.DeleteTowerBody(self.tower1)
-        #     self.tower1 = None
-            
-        # if self.tower2:
-        #     self.world.DeleteTowerBody(self.tower2)
-        #     self.tower2 = None
-            
-        # if self.arcline:
-        #     self.world.DeleteArclineBody(self.arcline)
-        #     self.arcline = None
         extents = self.terrain.extent
         W = extents.max_x - extents.min_x
         H = extents.max_y - extents.min_y
       
-        # 初始化杆1的位置
-        self.tower1.x = self.np_random.uniform(extents.min_x, extents.max_x)
-        self.tower1.y = self.np_random.uniform(extents.min_y, extents.max_y)
-        
-        # 初始化杆2的位置
-        self.tower2.x = self.np_random.uniform(extents.min_x, extents.max_x)
-        self.tower2.y = self.np_random.uniform(extents.min_y, extents.max_y)
+        for tower in self.towers:
+            tower.height = self.max_height
+            
+        for velocity in self.tower_velocity:
+            velocity = self.np_random.uniform(-self.max_speed, self.max_speed)
        
         # 更新弧垂
-        self.world.UpdateArcline(self.arcline)
-        
-        self.state = np.array([(self.tower1.x - extents.min_x) / W,
-                               (self.tower1.y - extents.min_y) / H,
-                               (self.tower2.x - extents.min_x) / W,
-                               (self.tower2.y - extents.min_y) / H,
-                               self.np_random.uniform(-self.max_speed, self.max_speed),
-                               self.np_random.uniform(-self.max_speed, self.max_speed),
-                               self.np_random.uniform(-self.max_speed, self.max_speed),
-                               self.np_random.uniform(-self.max_speed, self.max_speed)])
+        for arcline in self.arclines:
+            self.world.UpdateArcline(arcline)
+      
+        # 杆塔高度 + 杆塔速度
+        self.state = np.array([(tower.height - self.min_height) / (self.max_height - self.min_height) 
+                     for tower in self.towers] + [velocity / self.max_speed for velocity in self.tower_velocity])
         
         return np.array(self.state)
     
@@ -164,101 +168,95 @@ class OSG_TowerArcEnv(gym.Env):
         H = extents.max_y - extents.min_y
         Z = extents.max_z - extents.min_z
         
-        # 获取当前状态
-        tower1_x = self.state[0] * W + extents.min_x
-        tower1_y = self.state[1] * H + extents.min_y
-        tower2_x = self.state[2] * W + extents.min_x
-        tower2_y = self.state[3] * H + extents.min_y
-        tower1_vx = self.state[4]
-        tower1_vy = self.state[5]
-        tower2_vx = self.state[6]
-        tower2_vy = self.state[7]
+        tower_states = []
+        velocity_states = []
+        velocity_acc = self._get_accelerate(action)
         
-        # 根据当前状态中的各分量速度，更新坐标
-        tower1_x += self.tau * tower1_vx
-        tower1_y += self.tau * tower1_vy
-        tower2_x += self.tau * tower2_vx
-        tower2_y += self.tau * tower2_vy
-        
-        tower1_vx_acc, tower1_vy_acc, tower2_vx_acc, tower2_vy_acc = \
-            self._get_accelerate(action)
-        # 根据加速度更新新的速度值
-        tower1_vx += self.tau * tower1_vx_acc
-        tower1_vy += self.tau * tower1_vy_acc
-        tower2_vx += self.tau * tower2_vx_acc
-        tower2_vy += self.tau * tower2_vy_acc
-        
-        # 更新杆塔位置和弧垂
-        self.tower1.x = tower1_x
-        self.tower1.y = tower1_y
-        self.tower2.x = tower2_x
-        self.tower2.y = tower2_y
-        
-        # 设置新的状态
-        self.state = [
-            (self.tower1.x - extents.min_x) / W,
-            (self.tower1.y - extents.min_y) / H,
-            (self.tower2.x - extents.min_x) / W,
-            (self.tower2.y - extents.min_y) / H,
-            tower1_vx,
-            tower1_vy,
-            tower2_vx,
-            tower2_vy
-        ]
-        
-        reward = 0
-        lowestPnt = env.Point3D()
-        # 计算弧垂前，更新弧垂点
-        start_tower_x = self.arcline.startTower.x
-        self.world.UpdateArcline(self.arcline)
-        min_distance_to_terrain = self.world.CalcLowestDistance(self.arcline,
-                                                                lowestPnt)
+        for i in range(len(self.towers)):
+            tower_h = self.state[i] * (self.max_height - self.min_height) + self.min_height
+            tower_v = self.state[len(self.towers) + i] * self.max_speed
+            tower_h += self.tau * tower_v
 
-        self.endPnt = lowestPnt
-        self.startPnt = env.Point3DCopy(self.endPnt)
-        self.startPnt.z -= min_distance_to_terrain
+            self.towers[i].height = tower_h
+            tower_states.append((self.towers[i].height - self.min_height) / (self.max_height - self.min_height))
+            
+            tower_v += self.tau * velocity_acc[i]
+            tower_v = min(self.max_speed, max(tower_v, -self.max_speed))
+            velocity_states.append( tower_v / self.max_speed)
+            
+        # 设置新的状态
+        self.state = np.array(tower_states + velocity_states)
+      
+        has_invalid_tower = False
+        for tower in self.towers:
+            if tower.height < self.min_height or tower.height > self.max_height:
+                has_invalid_tower = True
+                break
+      
+        self.references = []
+        min_distance_to_terrain = math.inf
         
-        tower1_is_out = (self.tower1.x < extents.min_x 
-                        or self.tower1.x > extents.max_x
-                        or self.tower1.y < extents.min_y
-                        or self.tower1.y > extents.max_y)
+        # 计算弧垂前，更新弧垂点
+        for arcline in self.arclines:
+            lowestPnt = env.Point3D()
+            self.world.UpdateArcline(arcline)
+            distance_to_terrain = self.world.CalcLowestDistance(arcline, lowestPnt)
+
+            endPnt = lowestPnt
+            startPnt = env.Point3DCopy(endPnt)
+            startPnt.z -= distance_to_terrain
+            self.references.append((startPnt, endPnt))
+            
+            if distance_to_terrain < min_distance_to_terrain:
+                min_distance_to_terrain = distance_to_terrain
+            
+        # tower1_is_out = (self.tower1.x < extents.min_x 
+        #                 or self.tower1.x > extents.max_x
+        #                 or self.tower1.y < extents.min_y
+        #                 or self.tower1.y > extents.max_y)
         
-        tower2_is_out = (self.tower2.x < extents.min_x 
-                        or self.tower2.x > extents.max_x
-                        or self.tower2.y < extents.min_y
-                        or self.tower2.y > extents.max_y)
+        # tower2_is_out = (self.tower2.x < extents.min_x 
+        #                 or self.tower2.x > extents.max_x  
+        #                 or self.tower2.y < extents.min_y
+        #                 or self.tower2.y > extents.max_y)
         
-        done = (tower1_is_out or 
-                tower2_is_out or
-                min_distance_to_terrain < 0.0 or
-                min_distance_to_terrain == math.inf )
+        done = (min_distance_to_terrain < 0.0 or 
+                min_distance_to_terrain == math.inf or
+                has_invalid_tower)
+        
+        reward = 0.0
         
         if not done:
             reward = min_distance_to_terrain / Z
-            distance_between_tower = self.tower1.DistanceTo(self.tower2)
-            if distance_between_tower < 50.0:
-                reward = 0.0
         else:
             reward = 0.0
+        
+        # for tower in self.towers:
+        #     tower_cost = ((tower.height - self.min_height) / self.max_height) / len(self.towers)
+        #     reward -= 0.4 * 100.0 * tower_cost
+        
+        # for arcline in self.arclines:
+        #     arcline_cost = (1.0 - (arcline.K - self.min_K) / self.max_K) / len(self.arclines)
+        #     reward -= 0.6 * 100.0 * arcline_cost
         
         return np.array(self.state, dtype=np.float32), reward, done, {}
     
     
-    def render(self):
+    def render(self, mode='human'):
         if self.viewer is None:
             return
         
-        if self.arcline:
-            self.viewer.DrawArcline(self.arcline)
+        if self.arclines:
+            for arcline in self.arclines:
+                self.viewer.DrawArcline(arcline)
             
-            if self.startPnt and self.endPnt: 
-                self.viewer.DrawReferenceLine(self.startPnt, self.endPnt)
+        if self.references and len(self.references):
+            for startPnt, endPnt in self.references:
+                self.viewer.DrawReferenceLine(startPnt, endPnt)
         
-        if self.tower1:
-            self.viewer.DrawTower(self.tower1)
-        
-        if self.tower2:
-            self.viewer.DrawTower(self.tower2)
+        if self.towers:
+            for tower in self.towers:
+                self.viewer.DrawTower(tower)
             
     def close(self):
         

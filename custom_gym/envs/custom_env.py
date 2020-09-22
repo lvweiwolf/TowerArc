@@ -78,9 +78,12 @@ class TowerArcEnv(gym.Env):
         self.min_x2 = self.max_x1
         self.max_x2 = (VIEWPORT_W / SCALE)
         
-        self.pre_reward = None
-        self.observation_space = spaces.Box(-np.inf, np.inf, shape=(8,), dtype=np.float32)
-        self.action_space = spaces.Box(0, 3, (2,), dtype=np.int32)
+
+        low = np.array([0.0, 0.0, -self.max_speed, -self.max_speed], dtype=np.float32)
+        high = np.array([1.0, 1.0, self.max_speed, self.max_speed], dtype=np.float32)
+        
+        self.observation_space = spaces.Box(low, high, dtype=np.float32)
+        self.action_space = spaces.Discrete(4)
 
         self.seed()
         
@@ -441,7 +444,7 @@ class TowerArcEnv(gym.Env):
         
         return np.array(self.state, dtype=np.float32), reward, done, {}
         
-    def render(self):
+    def render(self, mode='human'):
         from gym.envs.classic_control import rendering
         
         if self.viewer is None:

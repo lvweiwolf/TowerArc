@@ -21,6 +21,14 @@
             "justMyCode": false
         },
         {
+            "name": "dqn.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/towerarc_keras_dqn.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "Python: 当前文件",
             "type": "python",
             "request": "launch",
