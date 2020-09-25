@@ -27,6 +27,9 @@ class OSG_TowerArcEnv(gym.Env):
         1         杆1 高度      5               30
         2         杆2 高度      5               30
         ...
+        n + 1     杆1 速度      -max_speed      max_speed
+        n + 2     杆2 速度      -max_speed      max_speed
+        
         ...         杆1与杆2间K值 0               7e-4
        
         
@@ -136,6 +139,19 @@ class OSG_TowerArcEnv(gym.Env):
                 
         return acc
     
+    def _norm_height(self, height):
+        return (height - self.min_height) / (self.max_height - self.min_height)
+    
+    def _unnorm_height(self, height):
+        return height * (self.max_height - self.min_height) + self.min_height
+    
+    def _norm_velocity(self, velocity):
+        return velocity / self.max_speed
+    
+    def _unnorm_velocity(self, velocity):
+        return velocity * self.max_speed
+        
+    
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]          
@@ -146,18 +162,19 @@ class OSG_TowerArcEnv(gym.Env):
         H = extents.max_y - extents.min_y
       
         for tower in self.towers:
-            tower.height = self.max_height
+            tower.height = self._unnorm_height(0.5)
             
-        for velocity in self.tower_velocity:
-            velocity = self.np_random.uniform(-self.max_speed, self.max_speed)
+        for i in range(len(self.tower_velocity)):
+            self.tower_velocity[i] = 0.0 # 将杆塔高度初始速度设置为0
+            # self.tower_velocity[i] = self.np_random.uniform(-self.max_speed/2, self.max_speed/2)
        
         # 更新弧垂
         for arcline in self.arclines:
             self.world.UpdateArcline(arcline)
       
         # 杆塔高度 + 杆塔速度
-        self.state = np.array([(tower.height - self.min_height) / (self.max_height - self.min_height) 
-                     for tower in self.towers] + [velocity / self.max_speed for velocity in self.tower_velocity])
+        self.state = np.array([self._norm_height(tower.height) for tower in self.towers] + 
+                              [self._norm_velocity(velocity) for velocity in self.tower_velocity])
         
         return np.array(self.state)
     
@@ -173,15 +190,23 @@ class OSG_TowerArcEnv(gym.Env):
         velocity_acc = self._get_accelerate(action)
         
         for i in range(len(self.towers)):
-            tower_h = self.state[i] * (self.max_height - self.min_height) + self.min_height
-            tower_v = self.state[len(self.towers) + i] * self.max_speed
+            tower_h = self._unnorm_height(self.state[i])
+            tower_v = self._unnorm_velocity(self.state[len(self.towers) + i])
             tower_h += self.tau * tower_v
+            # if tower_h > self.max_height: tower_h = self.max_height
+            # if tower_h < self.min_height: tower_h = self.min_height
 
+            # 先更新位置，后更新速度
             self.towers[i].height = tower_h
-            tower_states.append((self.towers[i].height - self.min_height) / (self.max_height - self.min_height))
+            tower_states.append(self._norm_height(self.towers[i].height))
             
             tower_v += self.tau * velocity_acc[i]
-            tower_v = min(self.max_speed, max(tower_v, -self.max_speed))
+            if tower_v > self.max_speed: tower_v = self.max_speed
+            if tower_v < -self.max_speed: tower_v = -self.max_speed
+            
+            if self.towers[i].height == self.min_height and tower_v < 0:
+                tower_v = 0
+            
             velocity_states.append( tower_v / self.max_speed)
             
         # 设置新的状态
@@ -209,17 +234,7 @@ class OSG_TowerArcEnv(gym.Env):
             
             if distance_to_terrain < min_distance_to_terrain:
                 min_distance_to_terrain = distance_to_terrain
-            
-        # tower1_is_out = (self.tower1.x < extents.min_x 
-        #                 or self.tower1.x > extents.max_x
-        #                 or self.tower1.y < extents.min_y
-        #                 or self.tower1.y > extents.max_y)
-        
-        # tower2_is_out = (self.tower2.x < extents.min_x 
-        #                 or self.tower2.x > extents.max_x  
-        #                 or self.tower2.y < extents.min_y
-        #                 or self.tower2.y > extents.max_y)
-        
+                
         done = (min_distance_to_terrain < 0.0 or 
                 min_distance_to_terrain == math.inf or
                 has_invalid_tower)
