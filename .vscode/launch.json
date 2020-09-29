@@ -21,12 +21,23 @@
             "justMyCode": false
         },
         {
-            "name": "dqn.py",
+            "name": "towerarc_keras_dqn.py",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/towerarc_keras_dqn.py",
             "console": "integratedTerminal",
             "justMyCode": false
+        },
+        {
+            "name": "towerarc_tfagents_dqn.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/towerarc_tfagents_dqn.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--root_dir", "./root"
+            ]
         },
         {
             "name": "Python: 当前文件",
