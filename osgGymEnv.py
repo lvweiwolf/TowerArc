@@ -377,6 +377,19 @@ def ArclineBodyCopy(rhs):
     val = _osgGymEnv.new_ArclineBodyCopy(rhs)
     return val
 
+class LineBody(Body):
+    thisown = property(lambda x: x.this.own(), lambda x, v: x.this.own(v), doc="The membership flag")
+    __repr__ = _swig_repr
+
+    def __init__(self, *args):
+        _osgGymEnv.LineBody_swiginit(self, _osgGymEnv.new_LineBody(*args))
+    startPnt = property(_osgGymEnv.LineBody_startPnt_get, _osgGymEnv.LineBody_startPnt_set)
+    endPnt = property(_osgGymEnv.LineBody_endPnt_get, _osgGymEnv.LineBody_endPnt_set)
+    __swig_destroy__ = _osgGymEnv.delete_LineBody
+
+# Register LineBody in _osgGymEnv:
+_osgGymEnv.LineBody_swigregister(LineBody)
+
 class World(object):
     thisown = property(lambda x: x.this.own(), lambda x, v: x.this.own(v), doc="The membership flag")
     __repr__ = _swig_repr
@@ -409,6 +422,12 @@ class World(object):
     def DeleteArclineBody(self, arcline):
         return _osgGymEnv.World_DeleteArclineBody(self, arcline)
 
+    def CreateLineBody(self, startPnt, endPnt):
+        return _osgGymEnv.World_CreateLineBody(self, startPnt, endPnt)
+
+    def DeleteLineBody(self, line):
+        return _osgGymEnv.World_DeleteLineBody(self, line)
+
     def UpdateArcline(self, arcline):
         return _osgGymEnv.World_UpdateArcline(self, arcline)
 
@@ -429,14 +448,17 @@ class Viewer(object):
     def StartRender(self):
         return _osgGymEnv.Viewer_StartRender(self)
 
-    def DrawTower(self, tower):
-        return _osgGymEnv.Viewer_DrawTower(self, tower)
+    def RecordTower(self, tower):
+        return _osgGymEnv.Viewer_RecordTower(self, tower)
 
-    def DrawArcline(self, arcline):
-        return _osgGymEnv.Viewer_DrawArcline(self, arcline)
+    def RecordArcline(self, arcline):
+        return _osgGymEnv.Viewer_RecordArcline(self, arcline)
 
-    def DrawReferenceLine(self, pnt1, pnt2):
-        return _osgGymEnv.Viewer_DrawReferenceLine(self, pnt1, pnt2)
+    def RecordLine(self, line):
+        return _osgGymEnv.Viewer_RecordLine(self, line)
+
+    def DrawRecords(self):
+        return _osgGymEnv.Viewer_DrawRecords(self)
 
 # Register Viewer in _osgGymEnv:
 _osgGymEnv.Viewer_swigregister(Viewer)

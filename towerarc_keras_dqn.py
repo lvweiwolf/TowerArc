@@ -34,9 +34,12 @@ def tensorflow_init():
     tf.keras.backend.set_session(tf.Session(config=cfg))
 
 def simple_model(env):
+    model = Sequential()
     model.add(Flatten(input_shape=(1,) + env.observation_space.shape))
-    model.add(Dense(128))
-    model.add(Activation('relu'))
+    model.add(Dense(256))
+    model.add(Activation('relu')),
+    model.add(Dense(256))
+    model.add(Activation('relu')),
     model.add(Dense(env.action_space.n))
     model.add(Activation('linear'))
     print(model.summary())
@@ -89,6 +92,7 @@ if __name__ == '__main__':
     
     # 计算Q值策略
     policy = EpsGreedyQPolicy(eps=0.1)
+    # policy = BoltzmannQPolicy()
     
     # relayBuffer 和 policy 记录
     try:
@@ -98,19 +102,24 @@ if __name__ == '__main__':
     
     # dqn agent模型权重
     dqn = DQNAgent(model=model,
+                   enable_double_dqn=True,
                    nb_actions=env.action_space.n,
                    memory=memory,
                    nb_steps_warmup=10,
                    target_model_update=1e-2,
-                   policy=None)
+                   policy=policy)
     
     dqn.compile(Adam(lr=1e-3), metrics=['mae'])
 
     try:
-        dqn.load_weights('dqn_{}_weights.h5f'.format(env_name))
+        dqn.load_weights('tmp/dqn_{}_weights.h5f'.format(env_name))
     except (OSError):
         print("no weights file, train from the beginning.")
     
-    # dqn.fit(env, nb_steps=500000, visualize=False, verbose=2, callbacks=[check_point])
-    dqn.fit(env, nb_steps=100000, visualize=False, verbose=2)
+    dqn.fit(env, nb_steps=100000, visualize=True, verbose=2)
     dqn.test(env, nb_episodes=5, visualize=True)
+    
+    # 保存权重
+    dqn.save_weights('tmp/dqn_{}_weights.h5f'.format(env_name), overwrite=True)
+    # Save memory
+    pickle.dump(memory, open('tmp/dqn_{}_weights.mdl'.format(env_name), "wb"))

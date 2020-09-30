@@ -71,6 +71,7 @@ class OSG_TowerArcEnv(gym.Env):
         self.towers = []
         self.tower_velocity = []
         self.arclines = []
+        self.referenceLines = []
         
         # towerPositions = [(-239.130, -1078.551), 
         #                   (-466.500, -647.039),
@@ -101,6 +102,11 @@ class OSG_TowerArcEnv(gym.Env):
             nextTower = self.towers[i + 1]
             arcline = self.world.CreateArclineBody(curTower, nextTower, self.K, 5)
             self.arclines.append(arcline)
+            
+            # 创建对地参考线
+            referenceLine = self.world.CreateLineBody(env.Point3D(), env.Point3D())
+            self.referenceLines.append(referenceLine)
+            
     
         low = np.array([0.0 for _ in self.towers] + [-1.0 for _ in self.tower_velocity])
         high = np.array([1.0 for _ in self.towers] + [1.0 for _ in self.tower_velocity])
@@ -125,6 +131,11 @@ class OSG_TowerArcEnv(gym.Env):
             self.world.DeleteArclineBody(arcline)
             
         self.arclines = None
+        
+        for referenceLine in self.referenceLines:
+            self.world.DeleteLineBody(referenceLine)
+            
+        self.referenceLines = None
 
     def _get_accelerate(self, action):
         acc = [0.5 for _ in self.towers]
@@ -150,7 +161,6 @@ class OSG_TowerArcEnv(gym.Env):
     
     def _unnorm_velocity(self, velocity):
         return velocity * self.max_speed
-        
     
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -183,7 +193,6 @@ class OSG_TowerArcEnv(gym.Env):
         extents = self.terrain.extent
         W = extents.max_x - extents.min_x
         H = extents.max_y - extents.min_y
-        Z = extents.max_z - extents.min_z
         
         tower_states = []
         velocity_states = []
@@ -218,11 +227,14 @@ class OSG_TowerArcEnv(gym.Env):
                 has_invalid_tower = True
                 break
       
-        self.references = []
+        
         min_distance_to_terrain = math.inf
         
         # 计算弧垂前，更新弧垂点
-        for arcline in self.arclines:
+        for i in range(len(self.arclines)):
+            arcline = self.arclines[i]
+            referenceLine = self.referenceLines[i]
+            
             lowestPnt = env.Point3D()
             self.world.UpdateArcline(arcline)
             distance_to_terrain = self.world.CalcLowestDistance(arcline, lowestPnt)
@@ -230,7 +242,9 @@ class OSG_TowerArcEnv(gym.Env):
             endPnt = lowestPnt
             startPnt = env.Point3DCopy(endPnt)
             startPnt.z -= distance_to_terrain
-            self.references.append((startPnt, endPnt))
+            #self.references.append((startPnt, endPnt))
+            referenceLine.startPnt = startPnt
+            referenceLine.endPnt = endPnt
             
             if distance_to_terrain < min_distance_to_terrain:
                 min_distance_to_terrain = distance_to_terrain
@@ -242,18 +256,10 @@ class OSG_TowerArcEnv(gym.Env):
         reward = 0.0
         
         if not done:
-            reward = min_distance_to_terrain / Z
+            reward = -1.0 + 2.0 * min_distance_to_terrain / self.max_height
         else:
-            reward = 0.0
-        
-        # for tower in self.towers:
-        #     tower_cost = ((tower.height - self.min_height) / self.max_height) / len(self.towers)
-        #     reward -= 0.4 * 100.0 * tower_cost
-        
-        # for arcline in self.arclines:
-        #     arcline_cost = (1.0 - (arcline.K - self.min_K) / self.max_K) / len(self.arclines)
-        #     reward -= 0.6 * 100.0 * arcline_cost
-        
+            reward = -1.0
+   
         return np.array(self.state, dtype=np.float32), reward, done, {}
     
     
@@ -263,15 +269,18 @@ class OSG_TowerArcEnv(gym.Env):
         
         if self.arclines:
             for arcline in self.arclines:
-                self.viewer.DrawArcline(arcline)
+                self.viewer.RecordArcline(arcline)
             
-        if self.references and len(self.references):
-            for startPnt, endPnt in self.references:
-                self.viewer.DrawReferenceLine(startPnt, endPnt)
+        if self.referenceLines:
+            for referenceLine in self.referenceLines:
+                self.viewer.RecordLine(referenceLine)
         
         if self.towers:
             for tower in self.towers:
-                self.viewer.DrawTower(tower)
+                self.viewer.RecordTower(tower)
+                
+        # 统一绘制
+        self.viewer.DrawRecords()
             
     def close(self):
         
