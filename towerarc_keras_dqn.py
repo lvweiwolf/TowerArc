@@ -109,7 +109,7 @@ if __name__ == '__main__':
                    target_model_update=1e-2,
                    policy=policy)
     
-    dqn.compile(Adam(lr=1e-3), metrics=['mae'])
+    dqn.compile(Adam(lr=1e-4), metrics=['mae'])
 
     try:
         dqn.load_weights('tmp/dqn_{}_weights.h5f'.format(env_name))
