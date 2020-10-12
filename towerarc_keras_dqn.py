@@ -80,11 +80,9 @@ def high_model(env):
     
     return model
 
-if __name__ == '__main__':
-    tensorflow_init()
-    
+def train(env_name):
     #env_name = 'MountainCar-v0'
-    env_name = ENV_NAME_3D
+    
     env = gym.make(env_name)
     # np.random.seed(1024)
     # env.seed(1024)
@@ -123,3 +121,45 @@ if __name__ == '__main__':
     dqn.save_weights('tmp/dqn_{}_weights.h5f'.format(env_name), overwrite=True)
     # Save memory
     pickle.dump(memory, open('tmp/dqn_{}_weights.mdl'.format(env_name), "wb"))
+    
+def eval(env_name):
+    #env_name = 'MountainCar-v0'
+    env = gym.make(env_name)
+    # np.random.seed(1024)
+    # env.seed(1024)
+    model = simple_model(env)
+    
+    # 计算Q值策略
+    policy = EpsGreedyQPolicy(eps=0.1)
+    # policy = BoltzmannQPolicy()
+    
+    # relayBuffer 和 policy 记录
+    # try:
+    #     memory = pickle.load(open('tmp/dqn_{}_weights.mdl'.format(env_name), "rb"))
+    # except (FileNotFoundError, EOFError):
+    memory = SequentialMemory(limit=50000, window_length=1)
+    
+    # dqn agent模型权重
+    dqn = DQNAgent(model=model,
+                   enable_double_dqn=True,
+                   nb_actions=env.action_space.n,
+                   memory=memory,
+                   nb_steps_warmup=10,
+                   target_model_update=1e-2,
+                   policy=policy)
+    
+    dqn.compile(Adam(lr=1e-4), metrics=['mae'])
+
+    try:
+        dqn.load_weights('tmp/dqn_{}_weights.h5f'.format(env_name))
+    except (OSError):
+        print("no weights file, train from the beginning.")
+ 
+    dqn.test(env, nb_episodes=5, visualize=True)
+    
+
+if __name__ == '__main__':
+    env_name = ENV_NAME_3D
+    tensorflow_init()
+    # train(env_name)
+    eval(env_name) # 训练结果测试
