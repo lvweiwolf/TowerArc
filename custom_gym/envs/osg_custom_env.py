@@ -1,15 +1,10 @@
+import gym
 import math
-from math import fabs
-import re
 import numpy as np
-from tensorflow.python.framework.tensor_shape import vector
 import osgGymEnv as env
 
-import gym
 from gym import spaces
-from gym.utils import seeding, EzPickle
-
-from osgGymEnv import World
+from gym.utils import seeding
 
 DEM_TIFF = "C:\\Users\\lvwei\\Desktop\\export\\dem.tif"
 DOM_TIFF = "C:\\Users\\lvwei\\Desktop\\export\\dom2.tif"

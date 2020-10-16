@@ -29,6 +29,14 @@
             "justMyCode": false
         },
         {
+            "name": "towerarc_keras_ddpg.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/towerarc_keras_ddpg.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "towerarc_tfagents_dqn.py",
             "type": "python",
             "request": "launch",
@@ -45,7 +53,10 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "args": [
+                "--root_dir", "./root"
+            ]
         }
     ]
 }

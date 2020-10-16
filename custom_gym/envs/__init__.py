@@ -1,2 +1,3 @@
 from custom_gym.envs.custom_env import TowerArcEnv
 from custom_gym.envs.osg_custom_env import OSG_TowerArcEnv
+from custom_gym.envs.continuous_osg_custom_env import Continuous_OSG_TowerArcEnv

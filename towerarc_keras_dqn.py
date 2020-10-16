@@ -1,4 +1,3 @@
-import os
 import pickle
 import gym
 import custom_gym
