@@ -26,11 +26,11 @@ def actor_model(env):
     
     actor = Sequential()
     actor.add(Flatten(input_shape=(1,) + env.observation_space.shape))
-    actor.add(Dense(32))
+    actor.add(Dense(16))
     actor.add(Activation('relu'))
-    actor.add(Dense(32))
+    actor.add(Dense(16))
     actor.add(Activation('relu'))
-    actor.add(Dense(32))
+    actor.add(Dense(16))
     actor.add(Activation('relu'))
     actor.add(Dense(nb_actions))
     actor.add(Activation('linear'))
@@ -46,11 +46,11 @@ def critic_model(env):
     observation_input = Input(shape=(1,) + env.observation_space.shape, name='observation_input')
     flattened_observation = Flatten()(observation_input)
     x = Concatenate()([action_input, flattened_observation])
-    x = Dense(64)(x)
+    x = Dense(32)(x)
     x = Activation('relu')(x)
-    x = Dense(64)(x)
+    x = Dense(32)(x)
     x = Activation('relu')(x)
-    x = Dense(64)(x)
+    x = Dense(32)(x)
     x = Activation('relu')(x)
     x = Dense(1)(x)
     x = Activation('linear')(x)
@@ -93,7 +93,7 @@ def train(env_name):
                       nb_steps_warmup_actor=100,
                       random_process=random_process, 
                       gamma=.99, 
-                      target_model_update=1e-3)
+                      target_model_update=1e-2)
     # optimizer
     agent.compile(Adam(lr=.001, clipnorm=1.), metrics=['mae'])
     
@@ -106,9 +106,9 @@ def train(env_name):
     # Okay, now it's time to learn something! We visualize the training here for show, but this
     # slows down training quite a lot. You can always safely abort the training prematurely using
     # Ctrl + C.
-    agent.fit(env, nb_steps=100000, visualize=True, verbose=1, nb_max_episode_steps=200)
+    agent.fit(env, nb_steps=1000000, visualize=False, verbose=1, nb_max_episode_steps=200)
     # Finally, evaluate our algorithm for 5 episodes.
-    agent.test(env, nb_episodes=5, visualize=True, nb_max_episode_steps=200)
+    agent.test(env, nb_episodes=50, visualize=True, nb_max_episode_steps=200)
     
     # After training is done, we save the final weights.
     agent.save_weights('tmp/ddpg_{}_weights.h5f'.format(env_name), overwrite=True)
@@ -117,8 +117,10 @@ def train(env_name):
     
 def eval(env_name):
     env = gym.make(env_name)
-    np.random.seed(123)
-    env.seed(123)
+    random_seed = 123
+    np.random.seed(random_seed)
+    tf.random.set_random_seed(random_seed)
+    env.seed(random_seed)
     
     assert len(env.action_space.shape) == 1
     nb_actions = env.action_space.shape[0]
@@ -141,7 +143,7 @@ def eval(env_name):
                       nb_steps_warmup_actor=100,
                       random_process=random_process, 
                       gamma=.99, 
-                      target_model_update=1e-3)
+                      target_model_update=1e-2)
     
     # optimizer
     agent.compile(Adam(lr=.001, clipnorm=1.), metrics=['mae'])
@@ -151,10 +153,10 @@ def eval(env_name):
     except (OSError):
         print("no weights file, train from the beginning.")
         
-    agent.test(env, nb_episodes=5, visualize=True)
+    agent.test(env, nb_episodes=50, visualize=True)
      
 if __name__ == '__main__':
     env_name = 'Continuous_OSG_TowerArc-v0'
-    tensorflow_init()
+    # tensorflow_init()
     train(env_name)
-    #eval(env_name) # 训练结果测试
+    # eval(env_name) # 训练结果测试

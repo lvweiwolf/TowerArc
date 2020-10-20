@@ -44,7 +44,18 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
-                "--root_dir", "./root"
+                "--root_dir", "./tfagents_dqn"
+            ]
+        },
+        {
+            "name": "towerarc_tfagents_ddpg.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/towerarc_tfagents_ddpg.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--root_dir", "././tfagents_ddpg"
             ]
         },
         {

@@ -2,5 +2,7 @@
 *.jpg
 
 _pycache_/*
-tmp/*
-root/
+
+tmp/
+tfagents_ddpg/
+tfagents_dqn/
