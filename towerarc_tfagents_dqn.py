@@ -71,7 +71,7 @@ FLAGS = flags.FLAGS
 @gin.configurable
 def train_eval(
     root_dir,
-    env_name='OSG_TowerArc-v0',
+    env_name='CartPole-v0',
     num_iterations=100000,
     fc_layer_params=(128,),
     # Params for collect
@@ -297,14 +297,56 @@ def train_eval(
           )
 
 
+def eval(root_dir,
+         env_name='CartPole-v0',
+         fc_layer_params=(128,),
+         # Params for eval
+         num_eval_episodes=10,
+         agent_class=dqn_agent.DqnAgent):
+    
+    root_dir = os.path.expanduser(root_dir)
+    train_dir = os.path.join(root_dir, 'train')
+    eval_dir = os.path.join(root_dir, 'eval')
+    
+    tf_py_env = suite_gym.load(env_name)
+    tf_env = tf_py_environment.TFPyEnvironment(tf_py_env)
+    
+    q_net = q_network.QNetwork(tf_env.time_step_spec().observation,
+                               tf_env.action_spec(),
+                               fc_layer_params=fc_layer_params)
+
+    # TODO(b/127301657): Decay epsilon based on global step, cf. cl/188907839
+    agent = agent_class(tf_env.time_step_spec(),
+                        tf_env.action_spec(),
+                        q_network=q_net,
+                        optimizer=None)
+    
+    checkpoint = tf.train.Checkpoint(agent=agent)
+    latest_checkpoint = tf.train.latest_checkpoint(train_dir)
+    checkpoint_load_status = checkpoint.restore(latest_checkpoint)
+
+    with tf.Session(config=cfg) as sess:
+        checkpoint_load_status.initialize_or_restore(sess)
+        
+        eval_py_policy = py_tf_policy.PyTFPolicy(agent.policy)
+       
+        for _ in range(num_eval_episodes):
+            time_step = tf_py_env.reset()
+            tf_py_env.render()
+            
+            while not time_step.is_last():
+                action_step = eval_py_policy.action(time_step)
+                time_step = tf_py_env.step(action_step.action)
+                tf_py_env.render()
+
 def main(_):
   logging.set_verbosity(logging.INFO)
   tf.enable_resource_variables()
   agent_class = dqn_agent.DdqnAgent if FLAGS.use_ddqn else dqn_agent.DqnAgent
-  train_eval(
-      FLAGS.root_dir,
-      agent_class=agent_class,
-      num_iterations=FLAGS.num_iterations)
+  # train_eval( FLAGS.root_dir, agent_class=agent_class, num_iterations=FLAGS.num_iterations)
+  eval( FLAGS.root_dir, agent_class=agent_class, num_eval_episodes = 50)
+  
+  return 0
 
 
 if __name__ == '__main__':

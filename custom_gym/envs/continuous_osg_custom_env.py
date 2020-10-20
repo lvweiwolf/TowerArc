@@ -174,7 +174,7 @@ class Continuous_OSG_TowerArcEnv(gym.Env):
         return tower_accs, K_accs
     
     def _action_cost(self, action):
-        cost = self.action_cost_weight * np.sum(np.square(action))
+        cost = -self.action_cost_weight * np.sum(np.square(action))
         return cost
     
     def _normalize(self, value, min, max):
@@ -350,10 +350,9 @@ class Continuous_OSG_TowerArcEnv(gym.Env):
                 has_invalid_K)
         
         reward = 0.0
-        ctrl_cost = self._action_cost(action)
-        
+       
         if not done:
-            reward = -1.0 + 2.0 * min_distance_to_terrain / self.max_height - ctrl_cost
+            reward = -1.0 + (2.0 * min_distance_to_terrain / self.max_height) + self._action_cost(action)
         else:
             reward = -1.0
    

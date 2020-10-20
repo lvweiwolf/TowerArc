@@ -79,10 +79,10 @@ def train_eval(
     eval_env_name=None,
     env_load_fn=suite_gym.load,
     num_iterations=2000000,
-    actor_fc_layers=(400, 300),
-    critic_obs_fc_layers=(400,),
+    actor_fc_layers=(32, 32, 32),
+    critic_obs_fc_layers=(32,),
     critic_action_fc_layers=None,
-    critic_joint_fc_layers=(300,),
+    critic_joint_fc_layers=(32,),
     # Params for collect
     initial_collect_steps=1000,
     collect_steps_per_iteration=1,
@@ -166,10 +166,8 @@ def train_eval(
         tf_env.action_spec(),
         actor_network=actor_net,
         critic_network=critic_net,
-        actor_optimizer=tf.compat.v1.train.AdamOptimizer(
-            learning_rate=actor_learning_rate),
-        critic_optimizer=tf.compat.v1.train.AdamOptimizer(
-            learning_rate=critic_learning_rate),
+        actor_optimizer=tf.compat.v1.train.AdamOptimizer(learning_rate=actor_learning_rate),
+        critic_optimizer=tf.compat.v1.train.AdamOptimizer(learning_rate=critic_learning_rate),
         ou_stddev=ou_stddev,
         ou_damping=ou_damping,
         target_update_tau=target_update_tau,
@@ -375,37 +373,41 @@ def eval(root_dir,
     tf_agent = ddpg_agent.DdpgAgent(tf_env.time_step_spec(),
                                     tf_env.action_spec(),
                                     actor_network=actor_net,
-                                    critic_network=critic_net)
+                                    critic_network=critic_net,
+                                    actor_optimizer=tf.compat.v1.train.AdamOptimizer(learning_rate=actor_learning_rate),
+                                    critic_optimizer=tf.compat.v1.train.AdamOptimizer(learning_rate=critic_learning_rate),)
 
-    replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
-        tf_agent.collect_data_spec,
-        batch_size=tf_env.batch_size,
-        max_length=replay_buffer_capacity)
+    # replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
+    #     tf_agent.collect_data_spec,
+    #     batch_size=tf_env.batch_size,
+    #     max_length=replay_buffer_capacity)
    
 
     train_dir = os.path.join(root_dir, 'train')
     policy_dir = os.path.join(train_dir, 'policy')
-    replay_buffer_dir = os.path.join(train_dir, 'replay_buffer')
+    #replay_buffer_dir = os.path.join(train_dir, 'replay_buffer')
     
     latest_agent_checkpoint = tf.train.latest_checkpoint(train_dir)
     latest_policy_checkpoint = tf.train.latest_checkpoint(policy_dir)
-    latest_replay_buffer_checkpoint = tf.train.latest_checkpoint(replay_buffer_dir)
+    #latest_replay_buffer_checkpoint = tf.train.latest_checkpoint(replay_buffer_dir)
    
     agent_checkpointer = tf.train.Checkpoint(agent=tf_agent)
     policy_checkpointer = tf.train.Checkpoint(policy=tf_agent.policy)
-    replay_buffer_checkpointer = tf.train.Checkpoint(replay_buffer=replay_buffer)
+    #replay_buffer_checkpointer = tf.train.Checkpoint(replay_buffer=replay_buffer)
     
     # 从checkpoint文件还原数据
     agent_load_status = agent_checkpointer.restore(latest_agent_checkpoint)
     policy_load_status = policy_checkpointer.restore(latest_policy_checkpoint)
-    replay_buffer_load_status = replay_buffer_checkpointer.restore(latest_replay_buffer_checkpoint)
+    #replay_buffer_load_status = replay_buffer_checkpointer.restore(latest_replay_buffer_checkpoint)
     
+    init_agent_op = tf_agent.initialize()
     
     with tf.compat.v1.Session(config=cfg) as sess:
         agent_load_status.initialize_or_restore(sess)
         policy_load_status.initialize_or_restore(sess)
-        replay_buffer_load_status.initialize_or_restore(sess)
+        #replay_buffer_load_status.initialize_or_restore(sess)
         common.initialize_uninitialized_variables(sess)
+        sess.run(init_agent_op)
         
         # def cond(ts):
         #     return tf.logical_not(ts.is_last()[0])
@@ -430,14 +432,14 @@ def eval(root_dir,
                 action_step = eval_py_policy.action(time_step)
                 time_step = tf_py_env.step(action_step.action)
                 tf_py_env.render()
-
-    return 0
           
 def main(_):
   logging.set_verbosity(logging.INFO)
   tf.enable_resource_variables()
-  #train_eval(FLAGS.root_dir, num_iterations=FLAGS.num_iterations)
-  eval(FLAGS.root_dir, num_eval_episodes=50)
+  train_eval(FLAGS.root_dir, num_iterations=FLAGS.num_iterations)
+  #eval(FLAGS.root_dir, num_eval_episodes=50)
+  
+  return 0
 
 
 if __name__ == '__main__':
