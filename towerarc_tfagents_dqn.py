@@ -71,7 +71,7 @@ FLAGS = flags.FLAGS
 @gin.configurable
 def train_eval(
     root_dir,
-    env_name='CartPole-v0',
+    env_name='OSG_TowerArc-v0',
     num_iterations=100000,
     fc_layer_params=(128,),
     # Params for collect
@@ -298,7 +298,7 @@ def train_eval(
 
 
 def eval(root_dir,
-         env_name='CartPole-v0',
+         env_name='OSG_TowerArc-v0',
          fc_layer_params=(128,),
          # Params for eval
          num_eval_episodes=10,
@@ -343,8 +343,8 @@ def main(_):
   logging.set_verbosity(logging.INFO)
   tf.enable_resource_variables()
   agent_class = dqn_agent.DdqnAgent if FLAGS.use_ddqn else dqn_agent.DqnAgent
-  # train_eval( FLAGS.root_dir, agent_class=agent_class, num_iterations=FLAGS.num_iterations)
-  eval( FLAGS.root_dir, agent_class=agent_class, num_eval_episodes = 50)
+  #train_eval( FLAGS.root_dir, agent_class=agent_class, num_iterations=FLAGS.num_iterations)
+  eval( FLAGS.root_dir, agent_class=agent_class, num_eval_episodes = 1)
   
   return 0
 

@@ -1,4 +1,4 @@
-import gym
+﻿import gym
 import math
 import numpy as np
 import osgGymEnv as env
@@ -56,12 +56,12 @@ class OSG_TowerArcEnv(gym.Env):
     
     def __init__(self):
         super(OSG_TowerArcEnv, self).__init__()
-    
         self.K = 7e-5
         self.tau = 1.0
-        self.max_speed = 10
+       
         self.min_height = 20
         self.max_height = 80
+        self.max_speed = 2
         
         self.towers = []
         self.tower_velocity = []
@@ -144,18 +144,17 @@ class OSG_TowerArcEnv(gym.Env):
                 acc[i] = -acc[i]
                 
         return acc
+
+
+
+    # def _unnorm_velocity(self, velocity):
+    #     return velocity * self.max_speed
     
-    def _norm_height(self, height):
-        return (height - self.min_height) / (self.max_height - self.min_height)
+    def _normalize(self, value, min, max):
+        return (value - min) / (max - min)
     
-    def _unnorm_height(self, height):
-        return height * (self.max_height - self.min_height) + self.min_height
-    
-    def _norm_velocity(self, velocity):
-        return velocity / self.max_speed
-    
-    def _unnorm_velocity(self, velocity):
-        return velocity * self.max_speed
+    def _unnormalize(self, value, min, max):
+        return value * (max - min) + min
     
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -167,7 +166,7 @@ class OSG_TowerArcEnv(gym.Env):
         H = extents.max_y - extents.min_y
       
         for tower in self.towers:
-            tower.height = self._unnorm_height(0.5)
+            tower.height = self._unnormalize(0.5, self.min_height, self.max_height)
             
         for i in range(len(self.tower_velocity)):
             self.tower_velocity[i] = 0.0 # 将杆塔高度初始速度设置为0
@@ -178,8 +177,10 @@ class OSG_TowerArcEnv(gym.Env):
             self.world.UpdateArcline(arcline)
       
         # 杆塔高度 + 杆塔速度
-        self.state = np.array([self._norm_height(tower.height) for tower in self.towers] + 
-                              [self._norm_velocity(velocity) for velocity in self.tower_velocity])
+        self.state = np.array([self._normalize(tower.height, self.min_height, self.max_height) 
+                               for tower in self.towers] + 
+                              [self._normalize(velocity, -self.max_speed, self.max_speed) 
+                               for velocity in self.tower_velocity])
         
         return np.array(self.state)
     
@@ -194,24 +195,23 @@ class OSG_TowerArcEnv(gym.Env):
         velocity_acc = self._get_accelerate(action)
         
         for i in range(len(self.towers)):
-            tower_h = self._unnorm_height(self.state[i])
-            tower_v = self._unnorm_velocity(self.state[len(self.towers) + i])
+            tower_h = self._unnormalize(self.state[i], 
+                                        self.min_height, self.max_height)
+            tower_v = self._unnormalize(self.state[len(self.towers) + i],
+                                        -self.max_speed, 
+                                        self.max_speed)
             tower_h += self.tau * tower_v
-            # if tower_h > self.max_height: tower_h = self.max_height
-            # if tower_h < self.min_height: tower_h = self.min_height
 
             # 先更新位置，后更新速度
             self.towers[i].height = tower_h
-            tower_states.append(self._norm_height(self.towers[i].height))
+            tower_states.append(self._normalize(self.towers[i].height, 
+                                                self.min_height, self.max_height))
             
             tower_v += self.tau * velocity_acc[i]
-            if tower_v > self.max_speed: tower_v = self.max_speed
-            if tower_v < -self.max_speed: tower_v = -self.max_speed
-            
-            if self.towers[i].height == self.min_height and tower_v < 0:
-                tower_v = 0
-            
-            velocity_states.append( tower_v / self.max_speed)
+            tower_v = np.clip(tower_v, -self.max_speed, self.max_speed)
+            velocity_states.append(self._normalize(tower_v, 
+                                                   -self.max_speed, 
+                                                   self.max_speed))
             
         # 设置新的状态
         self.state = np.array(tower_states + velocity_states)
@@ -222,7 +222,6 @@ class OSG_TowerArcEnv(gym.Env):
                 has_invalid_tower = True
                 break
       
-        
         min_distance_to_terrain = math.inf
         
         # 计算弧垂前，更新弧垂点

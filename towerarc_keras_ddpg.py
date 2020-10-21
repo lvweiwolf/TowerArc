@@ -15,7 +15,7 @@ from rl.random import OrnsteinUhlenbeckProcess
 
 
 def tensorflow_init():
-    # tf.enable_eager_execution() # 开启立即执行模式
+    # tf.enable_eager_execution() # 开启立即执行模�?
     cfg = tf.ConfigProto(allow_soft_placement=True)
     cfg.gpu_options.allow_growth = True
     tf.keras.backend.set_session(tf.Session(config=cfg))
@@ -106,7 +106,7 @@ def train(env_name):
     # Okay, now it's time to learn something! We visualize the training here for show, but this
     # slows down training quite a lot. You can always safely abort the training prematurely using
     # Ctrl + C.
-    agent.fit(env, nb_steps=1000000, visualize=False, verbose=1, nb_max_episode_steps=200)
+    agent.fit(env, nb_steps=1000000, visualize=True, verbose=1, nb_max_episode_steps=200)
     # Finally, evaluate our algorithm for 5 episodes.
     agent.test(env, nb_episodes=50, visualize=True, nb_max_episode_steps=200)
     

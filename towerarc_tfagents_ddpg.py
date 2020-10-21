@@ -71,18 +71,20 @@ flags.DEFINE_integer('num_iterations', 1000000,
                      'Total number train/eval iterations to perform.')
 FLAGS = flags.FLAGS
 
+ENV_NAME = 'Continuous_OSG_TowerArc-v0'
+#ENV_NAME = 'Pendulum-v0'
 
 @gin.configurable
 def train_eval(
     root_dir,
-    env_name='Continuous_OSG_TowerArc-v0',
+    env_name=ENV_NAME,
     eval_env_name=None,
     env_load_fn=suite_gym.load,
     num_iterations=2000000,
-    actor_fc_layers=(32, 32, 32),
-    critic_obs_fc_layers=(32,),
+    actor_fc_layers=(400, 300),
+    critic_obs_fc_layers=(400,),
     critic_action_fc_layers=None,
-    critic_joint_fc_layers=(32,),
+    critic_joint_fc_layers=(300,),
     # Params for collect
     initial_collect_steps=1000,
     collect_steps_per_iteration=1,
@@ -100,7 +102,7 @@ def train_eval(
     critic_learning_rate=1e-3,
     dqda_clipping=None,
     td_errors_loss_fn=tf.compat.v1.losses.huber_loss,
-    gamma=0.995,
+    gamma=0.99,
     reward_scale_factor=1.0,
     gradient_clipping=None,
     # Params for eval
@@ -320,34 +322,17 @@ def train_eval(
           )
 
 def eval(root_dir,
-         env_name='Continuous_OSG_TowerArc-v0',
+         env_name=ENV_NAME,
          env_load_fn=suite_gym.load,
          actor_fc_layers=(400, 300),
          critic_obs_fc_layers=(400,),
          critic_action_fc_layers=None,
          critic_joint_fc_layers=(300,),
-         replay_buffer_capacity=100000,
-         ou_stddev=0.2,
-         ou_damping=0.15,
-         # Params for target update
-         target_update_tau=0.05,
-         target_update_period=5,
-         actor_learning_rate=1e-4,
-         critic_learning_rate=1e-3,
-         dqda_clipping=None,
-         td_errors_loss_fn=tf.compat.v1.losses.huber_loss,
-         gamma=0.995,
-         reward_scale_factor=1.0,
-         gradient_clipping=None,
          # Params for eval
-         num_eval_episodes=10,
-         debug_summaries=False,
-         summarize_grads_and_vars=False,
-         eval_metrics_callback=None):
+         num_eval_episodes=10):
     
     root_dir = os.path.expanduser(root_dir)
     
-    global_step = tf.compat.v1.train.get_or_create_global_step()
     tf_py_env = env_load_fn(env_name)
     tf_env = tf_py_environment.TFPyEnvironment(tf_py_env)
 
@@ -373,9 +358,7 @@ def eval(root_dir,
     tf_agent = ddpg_agent.DdpgAgent(tf_env.time_step_spec(),
                                     tf_env.action_spec(),
                                     actor_network=actor_net,
-                                    critic_network=critic_net,
-                                    actor_optimizer=tf.compat.v1.train.AdamOptimizer(learning_rate=actor_learning_rate),
-                                    critic_optimizer=tf.compat.v1.train.AdamOptimizer(learning_rate=critic_learning_rate),)
+                                    critic_network=critic_net)
 
     # replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
     #     tf_agent.collect_data_spec,
@@ -409,35 +392,25 @@ def eval(root_dir,
         common.initialize_uninitialized_variables(sess)
         sess.run(init_agent_op)
         
-        # def cond(ts):
-        #     return tf.logical_not(ts.is_last()[0])
-        
-        # def body(ts):
-        #     action_step = tf_agent.policy.action(ts)
-        #     ts = tf_env.step(action_step.action)
-        #     tf_py_env.render()
-        #     return [ts]
-        
-        # for _ in range(num_eval_episodes):     
-        #     time_step = tf_env.reset()
-        #     render_op = tf.while_loop(cond, body, [time_step])
-        #     sess.run(render_op)
-        
         eval_py_policy = py_tf_policy.PyTFPolicy(tf_agent.policy)
-        for _ in range(num_eval_episodes):
+        for i in range(num_eval_episodes):
             time_step = tf_py_env.reset()
             tf_py_env.render()
+            num_step = 0
             
             while not time_step.is_last():
                 action_step = eval_py_policy.action(time_step)
                 time_step = tf_py_env.step(action_step.action)
+                num_step += 1
                 tf_py_env.render()
+                
+            print(f'number of step {num_step} on episode {i}.')
           
 def main(_):
   logging.set_verbosity(logging.INFO)
   tf.enable_resource_variables()
   train_eval(FLAGS.root_dir, num_iterations=FLAGS.num_iterations)
-  #eval(FLAGS.root_dir, num_eval_episodes=50)
+  #eval(FLAGS.root_dir, num_eval_episodes=10)
   
   return 0
 

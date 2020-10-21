@@ -10,7 +10,7 @@ DEM_TIFF = "C:\\Users\\lvwei\\Desktop\\export\\dem.tif"
 DOM_TIFF = "C:\\Users\\lvwei\\Desktop\\export\\dom2.tif"
 TOWER_MODEL_OBJ = "C:\\Users\\lvwei\\Desktop\\export\\tower.obj"
 
-CARE_ABOUT_ARCLINE = False
+CARE_ABOUT_ARCLINE = True
 
 class Continuous_OSG_TowerArcEnv(gym.Env):
     """
@@ -52,13 +52,13 @@ class Continuous_OSG_TowerArcEnv(gym.Env):
     
     def __init__(self):
         super(Continuous_OSG_TowerArcEnv, self).__init__()
-        self.tau = 1.0
         self.action_cost_weight = 0.1
-        self.max_acc = 0.5
+        self.max_acc = 2.0
+        self.dt = 0.5
         
         self.min_height = 20
         self.max_height = 80
-        self.max_speed = 0.5
+        self.max_speed = 2
         
         self.min_K = 7e-6
         self.max_K = 7e-4        
@@ -101,10 +101,10 @@ class Continuous_OSG_TowerArcEnv(gym.Env):
             self.referenceLines.append(referenceLine)
         
         if CARE_ABOUT_ARCLINE:        
-            low = np.array([0.0 for _ in self.towers] +             # 杆塔最小高度
-                        [0.0 for _ in self.arclines] +              # K 最小值
-                        [-1.0 for _ in self.tower_velocity] +       # 杆塔最小速度
-                        [-1.0 for _ in self.K_velocity])            # K 最小速度
+            low = np.array([0.0 for _ in self.towers] +               # 杆塔最小高度
+                           [0.0 for _ in self.arclines] +             # K 最小值
+                           [-1.0 for _ in self.tower_velocity] +       # 杆塔最小速度
+                           [-1.0 for _ in self.K_velocity])            # K 最小速度
             
             high = np.array([1.0 for _ in self.towers] +            # 杆塔最大高度    
                             [1.0 for _ in self.arclines] +          # K 最大值
@@ -115,20 +115,20 @@ class Continuous_OSG_TowerArcEnv(gym.Env):
                            [-1.0 for _ in self.tower_velocity])     # 杆塔最小速度
                  
             high = np.array([1.0 for _ in self.towers] +            # 杆塔最大高度
-                        [1.0 for _ in self.tower_velocity])         # 杆塔最大速度
+                            [1.0 for _ in self.tower_velocity])     # 杆塔最大速度
         
         # state 维度空间
         self.observation_space = spaces.Box(low, high, dtype=np.float32)
         
         if CARE_ABOUT_ARCLINE:
-            low = np.array([0.0 for _ in self.towers] +             # 杆塔最小加速度
-                           [0.0 for _ in self.arclines])            # K 最小加速度
+            low = np.array([-self.max_acc for _ in self.tower_velocity] +       # 杆塔最小加速度
+                           [-self.max_acc for _ in self.K_velocity])          # K 最小加速度
             
-            high = np.array([1.0 for _ in self.tower_velocity] +    # 杆塔最大加速度
-                            [1.0 for _ in self.K_velocity])         # K 最大加速度
+            high = np.array([self.max_acc for _ in self.tower_velocity] +    # 杆塔最大加速度
+                            [self.max_acc for _ in self.K_velocity])       # K 最大加速度
         else:
-            low = np.array([0.0 for _ in self.towers])              # 杆塔最小加速度
-            high = np.array([1.0 for _ in self.tower_velocity])     # 杆塔最大加速度
+            low = np.array([-self.max_acc for _ in self.tower_velocity])     # 杆塔最小加速度
+            high = np.array([self.max_acc for _ in self.tower_velocity])     # 杆塔最大加速度
         
         # action 维度空间
         self.action_space = spaces.Box(low, high, dtype=np.float32)
@@ -156,18 +156,6 @@ class Continuous_OSG_TowerArcEnv(gym.Env):
         self.referenceLines = None
 
     def _get_accelerate(self, action):
-        # acc = [0.5 for _ in self.towers]
-        
-        # # 将action转化为二进制
-        # format_str = '{' + f':0{len(acc)}b' + '}'
-        # bitstr = format_str.format(action)
-        
-        # for i in range(len(acc)):
-        #     if bitstr[i] == '0':
-        #         acc[i] = -acc[i]
-                
-        # return acc
-        
         tower_accs = action[:len(self.tower_velocity)]
         K_accs = action[len(self.tower_velocity):]
         
@@ -177,29 +165,38 @@ class Continuous_OSG_TowerArcEnv(gym.Env):
         cost = -self.action_cost_weight * np.sum(np.square(action))
         return cost
     
-    def _normalize(self, value, min, max):
-        return (value - min) / (max - min)
-    
-    def _unnormalize(self, value, min, max):
-        return value * (max - min) + min
+    def _get_observation(self):
+        def norm(value, min, max):
+            return (value - min) / (max - min)
+        
+        if CARE_ABOUT_ARCLINE:
+            tower_heights, K_values, tower_velocity, K_velocity = self.state
+            observation = [norm(np.array(tower_heights, dtype=np.float32), self.min_height, self.max_height),
+                           norm(np.array(K_values, dtype=np.float32), self.min_K, self.max_K),
+                           np.array(tower_velocity, dtype=np.float32) / self.max_speed,
+                           np.array(K_velocity, dtype=np.float32) / self.max_K_speed]
+        else:
+            tower_heights, tower_velocity = self.state
+            observation = [norm(np.array(tower_heights, dtype=np.float32), self.min_height, self.max_height),
+                           np.array(tower_velocity, dtype=np.float32) / self.max_speed]
+        
+        observation = np.hstack(observation)
+        
+        return observation
     
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]          
     
     def reset(self):
-        extents = self.terrain.extent
-        W = extents.max_x - extents.min_x
-        H = extents.max_y - extents.min_y
-      
         # 初始化杆塔高度
         for tower in self.towers:
-            tower.height = self._unnormalize(0.5, self.min_height, self.max_height)
+            tower.height = self.min_height + (self.max_height - self.min_height) / 2.
             
         # 初始化杆塔速度
         for i in range(len(self.tower_velocity)):
-            self.tower_velocity[i] = 0.0 # 将杆塔初始速度设置为0
-            # self.tower_velocity[i] = self.np_random.uniform(-self.max_speed/2, self.max_speed/2)
+            #self.tower_velocity[i] = 0.0 # 将杆塔初始速度设置为0
+            self.tower_velocity[i] = self.np_random.uniform(-self.max_speed/2, self.max_speed/2)
 
         # 初始化弧垂K值, 并计算弧垂点
         for i in range(len(self.arclines)):
@@ -208,120 +205,132 @@ class Continuous_OSG_TowerArcEnv(gym.Env):
             
         # 初始化K值速度
         for i in range(len(self.K_velocity)):
-            self.K_velocity[i] = 0.0 # 初始速度为0
+            self.K_velocity[i] = self.np_random.uniform(-self.max_K_speed/2, self.max_K_speed/2)
       
         if CARE_ABOUT_ARCLINE:
             # 杆塔高度 + K值 + 杆塔速度 + K值速度
-            self.state = np.array([self._normalize(tower.height, self.min_height, self.max_height) 
-                                   for tower in self.towers] +  # 杆塔高度
-                                  [self._normalize(arcline.K, self.min_K, self.max_K)
-                                   for arcline in self.arclines] + # K值
-                                  [self._normalize(velocity, -self.max_speed, self.max_speed) 
-                                   for velocity in self.tower_velocity] + # 杆塔速度
-                                  [self._normalize(velocity, -self.max_K_speed, self.max_K_speed) 
-                                   for velocity in self.K_velocity]) # K值速度
+            self.state = [
+                [tower.height for tower in self.towers],        # 杆塔高度
+                [arcline.K for arcline in self.arclines],       # K值
+                [velocity for velocity in self.tower_velocity], # 杆塔速度
+                [velocity for velocity in self.K_velocity]      # K值速度
+            ]
         else:
-            self.state = np.array([self._normalize(tower.height, self.min_height, self.max_height) 
-                                   for tower in self.towers] + 
-                                  [self._normalize(velocity, -self.max_speed, self.max_speed) 
-                                   for velocity in self.tower_velocity])
+            self.state = [
+                [tower.height for tower in self.towers],        # 杆塔高度
+                [velocity for velocity in self.tower_velocity]  # 杆塔速度
+            ]
         
-        return np.array(self.state)
+        return self._get_observation()
     
-
     def step(self, action):
-        extents = self.terrain.extent
-        W = extents.max_x - extents.min_x
-        H = extents.max_y - extents.min_y
-        
-        tower_states = []
-        velocity_states = []
-        K_states = []
-        K_velocity_states = []
         tower_accs, K_accs = self._get_accelerate(action)
-        assert len(tower_accs) == len(self.towers), "length between tower_accs and self.towers must equal."
-        # assert len(K_accs) == len(self.arclines), "length between K_accs and self.arclines must equal."
         
         if CARE_ABOUT_ARCLINE:
-            last = 0
-            tower_heights = self.state[last:last + len(self.towers)]
-            last += len(self.towers)
-            K_values = self.state[last:last + len(self.arclines)]
-            last += len(self.arclines)
-            tower_velocity = self.state[last:last + len(self.tower_velocity)]
-            last += len(self.tower_velocity)
-            K_velocity = self.state[last:last + len(self.K_velocity)]
-        else:
-            last = 0
-            tower_heights = self.state[last:last + len(self.towers)]
-            last += len(self.towers)
-            tower_velocity = self.state[last:last + len(self.tower_velocity)]
-       
-        
-        assert len(tower_heights) == len(tower_velocity), "length between tower_heights and tower_velocity must equal."
-        assert len(tower_heights) == len(self.towers), "length between tower_heights and self.towers must equal."
-        # assert len(K_values) == len(K_velocity), "length between K_values and K_velocity must equal."
-        # assert len(K_values) == len(self.arclines), "length between K_values and self.arclines must equal."
-        
-        for i in range(len(self.towers)):
-            tower_h = self._unnormalize(tower_heights[i], self.min_height, self.max_height)
-            tower_v = self._unnormalize(tower_velocity[i], -self.max_speed, self.max_speed)
-            tower_h += self.tau * tower_v
-            # if tower_h > self.max_height: tower_h = self.max_height
-            # if tower_h < self.min_height: tower_h = self.min_height
+            tower_heights, K_values, tower_velocity, K_velocity = self.state
+            
+            assert len(tower_accs) == len(self.towers), "length between tower_accs and self.towers must equal."
+            assert len(K_accs) == len(self.arclines), "length between K_accs and self.arclines must equal."
+            assert len(tower_heights) == len(tower_velocity), "length between tower_heights and tower_velocity must equal."
+            assert len(tower_heights) == len(self.towers), "length between tower_heights and self.towers must equal."
+            assert len(K_values) == len(K_velocity), "length between K_values and K_velocity must equal."
+            assert len(K_values) == len(self.arclines), "length between K_values and self.arclines must equal."
+            
+            for i in range(len(self.towers)):
+                tower_h = tower_heights[i]
+                tower_v = tower_velocity[i]
+                
+                # 加速度
+                acc = np.clip(tower_accs[i], -self.max_acc, self.max_acc)
+                # 根据加速度更新速度
+                tower_v += acc * self.dt
+                # 限制最大速度
+                tower_v = np.clip(tower_v, -self.max_speed, self.max_speed)
+                # 更新杆塔高度
+                tower_h += tower_v
 
-            # 先更新位置，后更新速度
-            self.towers[i].height = tower_h
-            tower_states.append(self._normalize(self.towers[i].height, self.min_height, self.max_height))
-            
-            tower_v += self.tau * tower_accs[i]
-            if tower_v > self.max_speed: tower_v = self.max_speed
-            if tower_v < -self.max_speed: tower_v = -self.max_speed
-            
-            if self.towers[i].height == self.min_height and tower_v < 0:
-                tower_v = 0
+                self.towers[i].height = tower_h
                 
-            velocity_states.append(self._normalize(tower_v, -self.max_speed, self.max_speed))
-        
-        if CARE_ABOUT_ARCLINE:
-            for i in range(len(self.arclines)):
-                k = self._unnormalize(K_values[i], self.min_K, self.max_K)
-                k_v = self._unnormalize(K_velocity[i], -self.max_K_speed, self.max_K_speed)
-                k += self.tau * k_v
+                # 裁剪杆塔高度
+                tower_h = np.clip(tower_h, self.min_height, self.max_height)
                 
-                # 更新K值，在更新K值速度
-                self.arclines[i].K = k
-                K_states.append(self._normalize(self.arclines[i].K, self.min_K, self.max_K))
-                
-                k_v += self.tau * K_accs[i]
-                if k_v > self.max_K_speed: k_v = self.max_K_speed
-                if k_v < -self.max_K_speed: k_v = -self.max_K_speed
-                
-                if self.arclines[i].K == self.min_K and k_v < 0:
-                    k_v = 0
-                if self.arclines[i].K == self.max_K and k_v > 0:
-                    k_v = 0    
+                if tower_h == self.min_height and tower_v < 0:
+                    tower_v = 0
                     
-                K_velocity_states.append(self._normalize(k_v, -self.max_K_speed, self.max_K_speed))
-         
-        if CARE_ABOUT_ARCLINE:
+                tower_heights[i] = tower_h
+                tower_velocity[i] = tower_v
+                
+            for i in range(len(self.arclines)):
+                k = K_values[i]
+                k_v = K_velocity[i]
+
+                # K值变化加速度
+                acc = np.clip(K_accs[i], -self.max_acc, self.max_acc)
+                # 根据加速度更新K变化速度
+                k_v += acc * self.dt * 1e-6
+                # 限制最大速度
+                k_v = np.clip(k_v, -self.max_K_speed, self.max_K_speed)
+                # 更新K值
+                k += k_v
+                
+                self.arclines[i].K = k
+                
+                # 裁剪K值
+                k = np.clip(k, self.min_K, self.max_K)
+                
+                if k == self.min_K and k_v < 0:
+                    k_v = 0
+                
+                K_values[i] = k
+                K_velocity[i] = k_v
+
             # 设置新的状态
-            self.state = np.array(tower_states + K_states + velocity_states + K_velocity_states)
+            self.state = [tower_heights, K_values, tower_velocity, K_velocity]
         else:
-            self.state = np.array(tower_states + velocity_states)
+            tower_heights, tower_velocity = self.state
+        
+            assert len(tower_accs) == len(self.towers), "length between tower_accs and self.towers must equal."
+            assert len(tower_heights) == len(tower_velocity), "length between tower_heights and tower_velocity must equal."
+            assert len(tower_heights) == len(self.towers), "length between tower_heights and self.towers must equal."
+        
+            for i in range(len(self.towers)):
+                tower_h = tower_heights[i]
+                tower_v = tower_velocity[i]
+                
+                # 加速度
+                acc = np.clip(tower_accs[i], -self.max_acc, self.max_acc)
+                # 根据加速度更新速度
+                tower_v += acc * self.dt
+                # 限制最大速度
+                tower_v = np.clip(tower_v, -self.max_speed, self.max_speed)
+                # 更新杆塔高度
+                tower_h += tower_v
+                
+                self.towers[i].height = tower_h
+                
+                # 裁剪杆塔高度
+                tower_h = np.clip(tower_h, self.min_height, self.max_height)
+                
+                if tower_h == self.min_height and tower_v < 0:
+                    tower_v = 0
+                    
+                tower_heights[i] = tower_h
+                tower_velocity[i] = tower_v
+                
+            self.state = [tower_heights, tower_velocity]
       
         has_invalid_tower = False
-        has_invalid_K = False
-        
         for tower in self.towers:
             if tower.height < self.min_height or tower.height > self.max_height:
                 has_invalid_tower = True
                 break
-            
-        for arcline in self.arclines:
-            if arcline.K < self.min_K or arcline.K > self.max_K:
-                has_invalid_K = True
-                break
+        
+        if CARE_ABOUT_ARCLINE:
+            has_invalid_K = False
+            for arcline in self.arclines:
+                if arcline.K < self.min_K or arcline.K > self.max_K:
+                    has_invalid_K = True
+                    break
         
         min_distance_to_terrain = math.inf
         
@@ -343,20 +352,28 @@ class Continuous_OSG_TowerArcEnv(gym.Env):
             
             if distance_to_terrain < min_distance_to_terrain:
                 min_distance_to_terrain = distance_to_terrain
-                
-        done = (min_distance_to_terrain < 0.0 or 
-                min_distance_to_terrain == math.inf or
-                has_invalid_tower or
-                has_invalid_K)
+
+        if CARE_ABOUT_ARCLINE:
+            done = (min_distance_to_terrain < 0.0 or 
+                    min_distance_to_terrain == math.inf or
+                    has_invalid_tower or
+                    has_invalid_K)
+        else:
+            done = (min_distance_to_terrain < 0.0 or 
+                    min_distance_to_terrain == math.inf or
+                    has_invalid_tower)
         
         reward = 0.0
-       
+        
         if not done:
-            reward = -1.0 + (2.0 * min_distance_to_terrain / self.max_height) + self._action_cost(action)
+            reward = -1.0 + 2.0 * min_distance_to_terrain / self.max_height
         else:
             reward = -1.0
-   
-        return np.array(self.state, dtype=np.float32), reward, done, {}
+         
+        # print(f'reward: {reward}, action: {action}.')   
+        reward += self._action_cost(action)
+       
+        return self._get_observation(), reward, done, {}
     
     
     def render(self, mode='human'):
