@@ -32,6 +32,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+from os import system
 import time
 
 from tf_agents.trajectories.time_step import TimeStep
@@ -405,12 +406,14 @@ def eval(root_dir,
                 tf_py_env.render()
                 
             print(f'number of step {num_step} on episode {i}.')
-          
+    
 def main(_):
   logging.set_verbosity(logging.INFO)
   tf.enable_resource_variables()
-  train_eval(FLAGS.root_dir, num_iterations=FLAGS.num_iterations)
-  #eval(FLAGS.root_dir, num_eval_episodes=10)
+  #train_eval(FLAGS.root_dir, num_iterations=FLAGS.num_iterations)
+  eval(FLAGS.root_dir, num_eval_episodes=10)
+  
+  os.system("pause")
   
   return 0
 

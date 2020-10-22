@@ -318,55 +318,61 @@ class Continuous_OSG_TowerArcEnv(gym.Env):
                 tower_velocity[i] = tower_v
                 
             self.state = [tower_heights, tower_velocity]
-      
+
         has_invalid_tower = False
+        has_invalid_K = False
+        min_distance_to_terrain = math.inf
+        max_k = -math.inf
+        
         for tower in self.towers:
+            # 是否存在无效杆塔
             if tower.height < self.min_height or tower.height > self.max_height:
                 has_invalid_tower = True
                 break
         
-        if CARE_ABOUT_ARCLINE:
-            has_invalid_K = False
-            for arcline in self.arclines:
-                if arcline.K < self.min_K or arcline.K > self.max_K:
-                    has_invalid_K = True
-                    break
-        
-        min_distance_to_terrain = math.inf
-        
-        # 计算弧垂前，更新弧垂点
+        # 计算弧垂前，更新弧垂点 
         for i in range(len(self.arclines)):
             arcline = self.arclines[i]
             referenceLine = self.referenceLines[i]
+            
+            # 是否存在无效弧垂
+            if not has_invalid_K:
+                has_invalid_K = arcline.K < self.min_K or arcline.K > self.max_K
             
             lowestPnt = env.Point3D()
             self.world.UpdateArcline(arcline)
             distance_to_terrain = self.world.CalcLowestDistance(arcline, lowestPnt)
 
+            # 最低点参考线referenced line
             endPnt = lowestPnt
             startPnt = env.Point3DCopy(endPnt)
             startPnt.z -= distance_to_terrain
-            #self.references.append((startPnt, endPnt))
             referenceLine.startPnt = startPnt
             referenceLine.endPnt = endPnt
             
             if distance_to_terrain < min_distance_to_terrain:
                 min_distance_to_terrain = distance_to_terrain
+                
+            if arcline.K > max_k:
+                max_k = arcline.K
+            
 
         if CARE_ABOUT_ARCLINE:
-            done = (min_distance_to_terrain < 0.0 or 
+            done = (min_distance_to_terrain < 10.0 or 
                     min_distance_to_terrain == math.inf or
                     has_invalid_tower or
                     has_invalid_K)
         else:
-            done = (min_distance_to_terrain < 0.0 or 
+            done = (min_distance_to_terrain < 10.0 or 
                     min_distance_to_terrain == math.inf or
                     has_invalid_tower)
         
-        reward = 0.0
+        reward = -1.0
         
         if not done:
-            reward = -1.0 + 2.0 * min_distance_to_terrain / self.max_height
+            distance_cost = -1.0 + 2.0 * min_distance_to_terrain / self.max_height
+            K_cost = (max_k - self.min_K) / (self.max_K - self.min_K)
+            reward = 0.2* distance_cost + 0.8*K_cost
         else:
             reward = -1.0
          

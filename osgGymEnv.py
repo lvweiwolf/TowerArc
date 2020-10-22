@@ -234,6 +234,9 @@ class Point3D(object):
 
     def __init__(self, *args):
         _osgGymEnv.Point3D_swiginit(self, _osgGymEnv.new_Point3D(*args))
+
+    def DistanceTo(self, rhs):
+        return _osgGymEnv.Point3D_DistanceTo(self, rhs)
     x = property(_osgGymEnv.Point3D_x_get, _osgGymEnv.Point3D_x_set)
     y = property(_osgGymEnv.Point3D_y_get, _osgGymEnv.Point3D_y_set)
     z = property(_osgGymEnv.Point3D_z_get, _osgGymEnv.Point3D_z_set)
@@ -361,6 +364,9 @@ class ArclineBody(Body):
 
     def __init__(self):
         _osgGymEnv.ArclineBody_swiginit(self, _osgGymEnv.new_ArclineBody())
+
+    def GetLength(self):
+        return _osgGymEnv.ArclineBody_GetLength(self)
     startTower = property(_osgGymEnv.ArclineBody_startTower_get, _osgGymEnv.ArclineBody_startTower_set)
     endTower = property(_osgGymEnv.ArclineBody_endTower_get, _osgGymEnv.ArclineBody_endTower_set)
     pntsInSpan = property(_osgGymEnv.ArclineBody_pntsInSpan_get, _osgGymEnv.ArclineBody_pntsInSpan_set)
