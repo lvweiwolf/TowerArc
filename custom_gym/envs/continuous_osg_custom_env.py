@@ -370,9 +370,12 @@ class Continuous_OSG_TowerArcEnv(gym.Env):
         reward = -1.0
         
         if not done:
-            distance_cost = -1.0 + 2.0 * min_distance_to_terrain / self.max_height
-            K_cost = (max_k - self.min_K) / (self.max_K - self.min_K)
-            reward = 0.2* distance_cost + 0.8*K_cost
+            # 弧垂对地距离reward
+            distance_reward = -1.0 + 2.0 * min_distance_to_terrain / self.max_height
+            # K值reward
+            K_reward = (max_k - self.min_K) / (self.max_K - self.min_K)
+            
+            reward = 0.2 * distance_reward + 0.8*K_reward
         else:
             reward = -1.0
          

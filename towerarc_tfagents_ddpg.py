@@ -410,9 +410,10 @@ def eval(root_dir,
 def main(_):
   logging.set_verbosity(logging.INFO)
   tf.enable_resource_variables()
-  #train_eval(FLAGS.root_dir, num_iterations=FLAGS.num_iterations)
-  eval(FLAGS.root_dir, num_eval_episodes=10)
+  train_eval(FLAGS.root_dir, num_iterations=FLAGS.num_iterations)
+  #eval(FLAGS.root_dir, num_eval_episodes=10)
   
+  # 暂停下来，让渲染程序持续渲染
   os.system("pause")
   
   return 0
