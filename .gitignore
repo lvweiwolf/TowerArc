@@ -6,3 +6,4 @@ _pycache_/*
 tmp/
 tfagents_ddpg/
 tfagents_dqn/
+tfagents_td3/

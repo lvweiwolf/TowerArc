@@ -370,14 +370,17 @@ class Continuous_OSG_TowerArcEnv(gym.Env):
         reward = -1.0
         
         if not done:
+            # 选择合适的回报比例分配，有助于快速收敛
             # 弧垂对地距离reward
             distance_reward = -1.0 + 2.0 * min_distance_to_terrain / self.max_height
             # K值reward
             K_reward = (max_k - self.min_K) / (self.max_K - self.min_K)
             
-            reward = 0.2 * distance_reward + 0.8*K_reward
+            reward =  0.05*distance_reward + 0.95*K_reward
         else:
             reward = -1.0
+         
+         
          
         # print(f'reward: {reward}, action: {action}.')   
         reward += self._action_cost(action)

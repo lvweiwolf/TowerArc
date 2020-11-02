@@ -59,6 +59,17 @@
             ]
         },
         {
+            "name": "towerarc_tfagents_td3.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/towerarc_tfagents_td3.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--root_dir", "././tfagents_td3"
+            ]
+        },
+        {
             "name": "Python: 当前文件",
             "type": "python",
             "request": "launch",

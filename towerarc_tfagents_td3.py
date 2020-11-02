@@ -13,15 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-r"""Train and Eval DDPG.
-
+r"""Train and Eval TD3.
 To run:
-
 ```bash
-tensorboard --logdir $HOME/tmp/ddpg_v1/gym/HalfCheetah-v2/ --port 2223 &
-
-python tf_agents/agents/ddpg/examples/v1/train_eval.py \
-  --root_dir=$HOME/tmp/ddpg_v1/gym/HalfCheetah-v2/ \
+tensorboard --logdir $HOME/tmp/td3_v1/gym/HalfCheetah-v2/ --port 2223 &
+python tf_agents/agents/td3/examples/v1/train_eval.py \
+  --root_dir=$HOME/tmp/td3_v1/gym/HalfCheetah-v2/ \
   --num_iterations=2000000 \
   --alsologtostderr
 ```
@@ -32,10 +29,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-from os import system
 import time
 
-from tf_agents.trajectories.time_step import TimeStep
 import custom_gym
 
 from absl import app
@@ -45,17 +40,11 @@ from absl import logging
 import gin
 import tensorflow as tf
 
-# 设置GPU内存分配方式
-cfg = tf.ConfigProto(allow_soft_placement=True)
-cfg.gpu_options.allow_growth = True
-tf.keras.backend.set_session(tf.Session(config=cfg))
-
 from tf_agents.agents.ddpg import actor_network
 from tf_agents.agents.ddpg import critic_network
-from tf_agents.agents.ddpg import ddpg_agent
+from tf_agents.agents.td3 import td3_agent
 from tf_agents.drivers import dynamic_step_driver
-from tf_agents.environments import parallel_py_environment
-#from tf_agents.environments import suite_mujoco
+# from tf_agents.environments import suite_mujoco
 from tf_agents.environments import suite_gym
 from tf_agents.environments import tf_py_environment
 from tf_agents.eval import metric_utils
@@ -79,8 +68,6 @@ ENV_NAME = 'Continuous_OSG_TowerArc-v0'
 def train_eval(
     root_dir,
     env_name=ENV_NAME,
-    eval_env_name=None,
-    env_load_fn=suite_gym.load,
     num_iterations=2000000,
     actor_fc_layers=(400, 300),
     critic_obs_fc_layers=(400,),
@@ -89,21 +76,20 @@ def train_eval(
     # Params for collect
     initial_collect_steps=1000,
     collect_steps_per_iteration=1,
-    num_parallel_environments=1,
     replay_buffer_capacity=100000,
-    ou_stddev=0.2,
-    ou_damping=0.15,
+    exploration_noise_std=0.1,
     # Params for target update
     target_update_tau=0.05,
     target_update_period=5,
     # Params for train
     train_steps_per_iteration=1,
     batch_size=64,
+    actor_update_period=2,
     actor_learning_rate=1e-4,
     critic_learning_rate=1e-3,
     dqda_clipping=None,
     td_errors_loss_fn=tf.compat.v1.losses.huber_loss,
-    gamma=0.99,
+    gamma=0.995,
     reward_scale_factor=1.0,
     gradient_clipping=None,
     # Params for eval
@@ -120,7 +106,7 @@ def train_eval(
     summarize_grads_and_vars=False,
     eval_metrics_callback=None):
 
-  """A simple train and eval for DDPG."""
+  """A simple train and eval for TD3."""
   root_dir = os.path.expanduser(root_dir)
   train_dir = os.path.join(root_dir, 'train')
   eval_dir = os.path.join(root_dir, 'eval')
@@ -139,14 +125,8 @@ def train_eval(
   global_step = tf.compat.v1.train.get_or_create_global_step()
   with tf.compat.v2.summary.record_if(
       lambda: tf.math.equal(global_step % summary_interval, 0)):
-    if num_parallel_environments > 1:
-      tf_env = tf_py_environment.TFPyEnvironment(
-          parallel_py_environment.ParallelPyEnvironment(
-              [lambda: env_load_fn(env_name)] * num_parallel_environments))
-    else:
-      tf_env = tf_py_environment.TFPyEnvironment(env_load_fn(env_name))
-    eval_env_name = eval_env_name or env_name
-    eval_py_env = env_load_fn(eval_env_name)
+    tf_env = tf_py_environment.TFPyEnvironment(suite_gym.load(env_name))
+    eval_py_env = suite_gym.load(env_name)
 
     actor_net = actor_network.ActorNetwork(
         tf_env.time_step_spec().observation,
@@ -164,17 +144,19 @@ def train_eval(
         joint_fc_layer_params=critic_joint_fc_layers,
     )
 
-    tf_agent = ddpg_agent.DdpgAgent(
+    tf_agent = td3_agent.Td3Agent(
         tf_env.time_step_spec(),
         tf_env.action_spec(),
         actor_network=actor_net,
         critic_network=critic_net,
-        actor_optimizer=tf.compat.v1.train.AdamOptimizer(learning_rate=actor_learning_rate),
-        critic_optimizer=tf.compat.v1.train.AdamOptimizer(learning_rate=critic_learning_rate),
-        ou_stddev=ou_stddev,
-        ou_damping=ou_damping,
+        actor_optimizer=tf.compat.v1.train.AdamOptimizer(
+            learning_rate=actor_learning_rate),
+        critic_optimizer=tf.compat.v1.train.AdamOptimizer(
+            learning_rate=critic_learning_rate),
+        exploration_noise_std=exploration_noise_std,
         target_update_tau=target_update_tau,
         target_update_period=target_update_period,
+        actor_update_period=actor_update_period,
         dqda_clipping=dqda_clipping,
         td_errors_loss_fn=td_errors_loss_fn,
         gamma=gamma,
@@ -182,7 +164,8 @@ def train_eval(
         gradient_clipping=gradient_clipping,
         debug_summaries=debug_summaries,
         summarize_grads_and_vars=summarize_grads_and_vars,
-        train_step_counter=global_step)
+        train_step_counter=global_step,
+    )
 
     replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
         tf_agent.collect_data_spec,
@@ -211,14 +194,13 @@ def train_eval(
         observers=[replay_buffer.add_batch] + train_metrics,
         num_steps=collect_steps_per_iteration).run()
 
-    # Dataset generates trajectories with shape [Bx2x...]
     dataset = replay_buffer.as_dataset(
         num_parallel_calls=3,
         sample_batch_size=batch_size,
         num_steps=2).prefetch(3)
-
     iterator = tf.compat.v1.data.make_initializable_iterator(dataset)
     trajectories, unused_info = iterator.get_next()
+
     train_fn = common.function(tf_agent.train)
     train_op = train_fn(experience=trajectories)
 
@@ -248,12 +230,12 @@ def train_eval(
 
     init_agent_op = tf_agent.initialize()
 
-    with tf.compat.v1.Session(config=cfg) as sess:
+    with tf.compat.v1.Session() as sess:
       # Initialize the graph.
       train_checkpointer.initialize_or_restore(sess)
       rb_checkpointer.initialize_or_restore(sess)
       sess.run(iterator.initializer)
-      # TODO(b/126239733) Remove once Periodically can be saved.
+      # TODO(b/126239733): Remove once Periodically can be saved.
       common.initialize_uninitialized_variables(sess)
 
       sess.run(init_agent_op)
@@ -269,27 +251,26 @@ def train_eval(
           num_episodes=num_eval_episodes,
           global_step=global_step_val,
           callback=eval_metrics_callback,
+          log=True,
       )
 
       collect_call = sess.make_callable(collect_op)
-      train_step_call = sess.make_callable([train_op, summary_ops])
-      global_step_call = sess.make_callable(global_step)
+      train_step_call = sess.make_callable([train_op, summary_ops, global_step])
 
       timed_at_step = sess.run(global_step)
       time_acc = 0
-      steps_per_second_ph = tf.compat.v1.placeholder(
-          tf.float32, shape=(), name='steps_per_sec_ph')
-      steps_per_second_summary = tf.compat.v2.summary.scalar(
-          name='global_steps_per_sec', data=steps_per_second_ph,
-          step=global_step)
+      steps_per_second_ph = tf.compat.v1.placeholder(tf.float32, shape=(), 
+                                                     name='steps_per_sec_ph')
+      steps_per_second_summary = tf.compat.v2.summary.scalar(name='global_steps_per_sec',
+                                                             data=steps_per_second_ph,
+                                                             step=global_step)
 
       for _ in range(num_iterations):
         start_time = time.time()
         collect_call()
         for _ in range(train_steps_per_iteration):
-          loss_info_value, _ = train_step_call()
+          loss_info_value, _, global_step_val = train_step_call()
         time_acc += time.time() - start_time
-        global_step_val = global_step_call()
 
         if global_step_val % log_interval == 0:
           logging.info('step = %d, loss = %f', global_step_val,
@@ -322,101 +303,11 @@ def train_eval(
               log=True,
           )
 
-def eval(root_dir,
-         env_name=ENV_NAME,
-         env_load_fn=suite_gym.load,
-         actor_fc_layers=(400, 300),
-         critic_obs_fc_layers=(400,),
-         critic_action_fc_layers=None,
-         critic_joint_fc_layers=(300,),
-         # Params for eval
-         num_eval_episodes=10):
-    
-    root_dir = os.path.expanduser(root_dir)
-    
-    tf_py_env = env_load_fn(env_name)
-    tf_env = tf_py_environment.TFPyEnvironment(tf_py_env)
 
-    # actor网络
-    actor_net = actor_network.ActorNetwork(
-        tf_env.time_step_spec().observation,
-        tf_env.action_spec(),
-        fc_layer_params=actor_fc_layers,
-    )
-
-    # critic网络
-    critic_net_input_specs = (tf_env.time_step_spec().observation,
-                            tf_env.action_spec())
-
-    critic_net = critic_network.CriticNetwork(
-        critic_net_input_specs,
-        observation_fc_layer_params=critic_obs_fc_layers,
-        action_fc_layer_params=critic_action_fc_layers,
-        joint_fc_layer_params=critic_joint_fc_layers,
-    )
-
-    # DDPG Agent
-    tf_agent = ddpg_agent.DdpgAgent(tf_env.time_step_spec(),
-                                    tf_env.action_spec(),
-                                    actor_network=actor_net,
-                                    critic_network=critic_net)
-
-    # replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
-    #     tf_agent.collect_data_spec,
-    #     batch_size=tf_env.batch_size,
-    #     max_length=replay_buffer_capacity)
-   
-
-    train_dir = os.path.join(root_dir, 'train')
-    policy_dir = os.path.join(train_dir, 'policy')
-    #replay_buffer_dir = os.path.join(train_dir, 'replay_buffer')
-    
-    latest_agent_checkpoint = tf.train.latest_checkpoint(train_dir)
-    latest_policy_checkpoint = tf.train.latest_checkpoint(policy_dir)
-    #latest_replay_buffer_checkpoint = tf.train.latest_checkpoint(replay_buffer_dir)
-   
-    agent_checkpointer = tf.train.Checkpoint(agent=tf_agent)
-    policy_checkpointer = tf.train.Checkpoint(policy=tf_agent.policy)
-    #replay_buffer_checkpointer = tf.train.Checkpoint(replay_buffer=replay_buffer)
-    
-    # 从checkpoint文件还原数据
-    agent_load_status = agent_checkpointer.restore(latest_agent_checkpoint)
-    policy_load_status = policy_checkpointer.restore(latest_policy_checkpoint)
-    #replay_buffer_load_status = replay_buffer_checkpointer.restore(latest_replay_buffer_checkpoint)
-    
-    init_agent_op = tf_agent.initialize()
-    
-    with tf.compat.v1.Session(config=cfg) as sess:
-        agent_load_status.initialize_or_restore(sess)
-        policy_load_status.initialize_or_restore(sess)
-        #replay_buffer_load_status.initialize_or_restore(sess)
-        common.initialize_uninitialized_variables(sess)
-        sess.run(init_agent_op)
-        
-        eval_py_policy = py_tf_policy.PyTFPolicy(tf_agent.policy)
-        for i in range(num_eval_episodes):
-            time_step = tf_py_env.reset()
-            tf_py_env.render()
-            num_step = 0
-            
-            while not time_step.is_last():
-                action_step = eval_py_policy.action(time_step)
-                time_step = tf_py_env.step(action_step.action)
-                num_step += 1
-                tf_py_env.render()
-                
-            print(f'number of step {num_step} on episode {i}.')
-    
 def main(_):
   logging.set_verbosity(logging.INFO)
   tf.enable_resource_variables()
-  #train_eval(FLAGS.root_dir, num_iterations=FLAGS.num_iterations)
-  eval(FLAGS.root_dir, num_eval_episodes=10)
-  
-  # 暂停下来，让渲染程序持续渲染
-  os.system("pause")
-  
-  return 0
+  train_eval(FLAGS.root_dir, num_iterations=FLAGS.num_iterations)
 
 
 if __name__ == '__main__':
