@@ -15,7 +15,6 @@ from rl.random import OrnsteinUhlenbeckProcess
 
 
 def tensorflow_init():
-    # tf.enable_eager_execution() # 开启立即执行模�?
     cfg = tf.ConfigProto(allow_soft_placement=True)
     cfg.gpu_options.allow_growth = True
     tf.keras.backend.set_session(tf.Session(config=cfg))

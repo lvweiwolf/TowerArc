@@ -297,6 +297,12 @@ class Body(object):
 
     def GetNode(self):
         return _osgGymEnv.Body_GetNode(self)
+
+    def SetLabel(self, nodePtr):
+        return _osgGymEnv.Body_SetLabel(self, nodePtr)
+
+    def GetLabel(self):
+        return _osgGymEnv.Body_GetLabel(self)
     __swig_destroy__ = _osgGymEnv.delete_Body
 
 # Register Body in _osgGymEnv:
@@ -334,12 +340,6 @@ class TowerBody(Body):
 
     def GetModelPath(self):
         return _osgGymEnv.TowerBody_GetModelPath(self)
-
-    def SetNode(self, nodePtr):
-        return _osgGymEnv.TowerBody_SetNode(self, nodePtr)
-
-    def GetNode(self):
-        return _osgGymEnv.TowerBody_GetNode(self)
 
     def DistanceTo(self, other):
         return _osgGymEnv.TowerBody_DistanceTo(self, other)
